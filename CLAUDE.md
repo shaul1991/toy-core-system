@@ -4,12 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Laravel 12 기반 웹 애플리케이션 프로젝트입니다.
+**Toy Domain Service** - 도메인 핵심 로직을 제공하는 Domain Service API입니다.
 
-- PHP 8.4+
-- Laravel Framework 12.x
-- Tailwind CSS 4.x (Vite 플러그인)
-- PHPUnit 11.x
+마이크로서비스 아키텍처에서 **도메인 핵심 기능**만을 담당하는 Primitive Service로, 상위 서비스(Business Service)에서 조합하여 사용합니다.
+
+## Tech Stack
+
+| Category | Technology |
+|----------|------------|
+| Framework | Laravel 12.x |
+| Language | PHP 8.4+ |
+| Database | PostgreSQL 18 |
+| Cache | Redis 8 |
+| NoSQL | MongoDB 8 |
+| Object Storage | MinIO |
+| Frontend | Tailwind CSS 4.x (Vite) |
+| Testing | PHPUnit 11.x |
+| Monitoring | Sentry |
 
 ## Commands
 
@@ -55,16 +66,31 @@ npm run dev
 
 ## Architecture
 
+### Service Layer Structure
+
+```
+Front → BFF → Business → Domain
+```
+
+- **Domain Service**: 원자적 도메인 로직, 재사용 가능한 기능 단위 (이 프로젝트)
+- **Business Service**: 여러 Domain Service 호출 및 오케스트레이션, 비즈니스 규칙 적용
+
 ### Directory Structure
 
-- `app/` - 애플리케이션 코어 코드 (Models, Http/Controllers, Providers)
-- `bootstrap/app.php` - 애플리케이션 부트스트랩 및 미들웨어/예외처리 설정
-- `routes/web.php` - 웹 라우트 정의
-- `routes/console.php` - Artisan 콘솔 명령어 정의
-- `database/migrations/` - 데이터베이스 마이그레이션
-- `database/factories/` - 모델 팩토리 (테스트용)
-- `tests/Feature/` - 기능 테스트
-- `tests/Unit/` - 유닛 테스트
+```
+toy-core-system/
+├── app/
+│   ├── Http/Controllers/    # API Controllers
+│   ├── Services/            # Domain Logic
+│   ├── Models/              # Eloquent Models
+│   └── Providers/           # Service Providers
+├── config/                  # Configuration
+├── database/                # Migrations, Seeders
+├── routes/
+│   ├── api.php              # API Routes
+│   └── web.php              # Web Routes
+└── tests/                   # PHPUnit Tests
+```
 
 ### Testing
 
