@@ -59,9 +59,9 @@ Front → BFF → Business → Domain
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Infrastructure Layer                         │
 │                                                                 │
-│      ┌─────────┐    ┌─────────┐    ┌─────────┐                 │
-│      │  Redis  │    │  MySQL  │    │  Queue  │                 │
-│      └─────────┘    └─────────┘    └─────────┘                 │
+│  ┌──────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐  │
+│  │ Postgres │ │  Redis  │ │ MongoDB │ │  MinIO  │ │  Queue  │  │
+│  └──────────┘ └─────────┘ └─────────┘ └─────────┘ └─────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -123,8 +123,10 @@ Front → BFF → Business → Domain
 |----------|------------|
 | Framework | Laravel 12.x |
 | Language | PHP 8.4+ |
-| Cache/Store | Redis |
-| Database | MySQL 8.x |
+| Database | PostgreSQL 18 |
+| Cache | Redis 8 |
+| NoSQL | MongoDB 8 |
+| Object Storage | MinIO |
 | Monitoring | Sentry |
 
 ## Development
@@ -133,8 +135,10 @@ Front → BFF → Business → Domain
 
 - PHP 8.4+
 - Composer
-- Redis
-- MySQL 8.x
+- PostgreSQL 18
+- Redis 8
+- MongoDB 8
+- MinIO
 
 ### Setup
 
