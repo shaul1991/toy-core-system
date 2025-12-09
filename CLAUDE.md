@@ -99,6 +99,150 @@ toy-core-system/
 
 테스트는 인메모리 SQLite 데이터베이스를 사용합니다 (`phpunit.xml` 참조).
 
+## Application Architecture 공통화
+
+애플리케이션 전반에서 일관성을 유지하기 위한 공통화 영역입니다.
+
+### 공통화 현황
+
+| 영역 | 상태 | 위치 | 설명 |
+|------|------|------|------|
+| HTTP Response | ✅ 완료 | `app/Shared/Http/` | API 응답 포맷 통일 |
+| Exception Handling | ⏳ 예정 | `app/Shared/Exceptions/` | 예외 → API 응답 자동 변환 |
+| Form Request | ⏳ 예정 | `app/Shared/Http/Requests/` | 입력 검증 + 에러 응답 통합 |
+| DTO | ⏳ 예정 | `app/Shared/DTO/` | 레이어 간 데이터 전송 객체 |
+| Repository | ⏳ 예정 | `app/Shared/Repositories/` | 데이터 접근 추상화 인터페이스 |
+| Domain Event | ⏳ 예정 | `app/Shared/Events/` | 도메인 이벤트 기반 구조 |
+| Value Object | ⏳ 예정 | `app/Shared/ValueObjects/` | 불변 값 객체 베이스 클래스 |
+
+### Exception Handling (예정)
+
+도메인 예외를 API 응답으로 자동 변환합니다.
+
+```php
+// 도메인에서 예외 발생
+throw new UserNotFoundException($userId);
+
+// 자동으로 API 응답 변환
+// → {"success": false, "error": {"code": "USER_NOT_FOUND", "message": "..."}}
+```
+
+**구현 예정 파일:**
+- `app/Shared/Exceptions/DomainException.php` - 도메인 예외 베이스
+- `app/Shared/Exceptions/Handler.php` - 예외 핸들러
+
+### Form Request (예정)
+
+Laravel FormRequest와 통합하여 ValidationException 발생 시 공통 에러 포맷을 적용합니다.
+
+```php
+// ValidationException 자동 변환
+// → {"success": false, "error": {"code": "VALIDATION_ERROR", "details": {...}}}
+```
+
+**구현 예정 파일:**
+- `app/Shared/Http/Requests/ApiFormRequest.php` - 공통 FormRequest
+
+### DTO (예정)
+
+레이어 간 데이터 전송을 위한 불변 객체입니다.
+
+```php
+final readonly class CreateUserDTO
+{
+    public function __construct(
+        public string $name,
+        public string $email,
+    ) {}
+
+    public static function fromRequest(Request $request): self
+    {
+        return new self(
+            name: $request->input('name'),
+            email: $request->input('email'),
+        );
+    }
+}
+```
+
+**구현 예정 파일:**
+- `app/Shared/DTO/DataTransferObject.php` - DTO 베이스 클래스
+
+### Repository (예정)
+
+도메인에서 인프라(DB)를 분리하기 위한 인터페이스입니다.
+
+```php
+// Domain Layer - Interface
+interface UserRepositoryInterface
+{
+    public function findById(UserId $id): ?User;
+    public function save(User $user): void;
+    public function delete(User $user): void;
+}
+
+// Infrastructure Layer - Implementation
+class EloquentUserRepository implements UserRepositoryInterface
+{
+    public function findById(UserId $id): ?User
+    {
+        return User::find($id->value);
+    }
+}
+```
+
+**구현 예정 파일:**
+- `app/Shared/Repositories/RepositoryInterface.php` - 공통 Repository 인터페이스
+
+### Domain Event (예정)
+
+도메인 이벤트 기반의 느슨한 결합을 지원합니다.
+
+```php
+// 도메인 이벤트 발행
+$user->raise(new UserCreated($user->id));
+
+// 이벤트 리스너에서 처리
+class SendWelcomeEmail
+{
+    public function handle(UserCreated $event): void
+    {
+        // 이메일 발송
+    }
+}
+```
+
+**구현 예정 파일:**
+- `app/Shared/Events/DomainEvent.php` - 도메인 이벤트 베이스
+- `app/Shared/Events/HasDomainEvents.php` - 이벤트 발행 Trait
+
+### Value Object (예정)
+
+불변 값 객체의 베이스 클래스입니다.
+
+```php
+final readonly class Email extends ValueObject
+{
+    public function __construct(
+        public string $value
+    ) {
+        $this->validate();
+    }
+
+    protected function validate(): void
+    {
+        if (!filter_var($this->value, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException('Invalid email format');
+        }
+    }
+}
+```
+
+**구현 예정 파일:**
+- `app/Shared/ValueObjects/ValueObject.php` - Value Object 베이스
+
+---
+
 ## HTTP Response 공통화
 
 모든 API 응답은 `ApiResponse` 클래스를 통해 일관된 포맷으로 반환됩니다.
