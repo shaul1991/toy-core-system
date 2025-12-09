@@ -4,23 +4,22 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
-use App\Models\Timer;
-use App\Shared\Exceptions\NotFoundException;
+use App\Services\TimerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class TimerController extends Controller
 {
+    public function __construct(
+        private TimerService $timerService
+    ) {}
+
     /**
      * 타이머 조회 (남은 시간 확인)
      */
     public function show(string $key): JsonResponse
     {
-        $timer = Timer::where('key', $key)->first();
-
-        if (! $timer) {
-            throw NotFoundException::forResource('Timer', $key);
-        }
+        $timer = $this->timerService->getTimer($key);
 
         return $this->successResponse([
             'key' => $timer->key,
@@ -38,17 +37,7 @@ class TimerController extends Controller
             'target_at' => ['required', 'date'],
         ]);
 
-        $timer = Timer::withTrashed()->where('key', $key)->first();
-
-        if ($timer) {
-            $timer->restore();
-            $timer->update(['target_at' => $validated['target_at']]);
-        } else {
-            $timer = Timer::create([
-                'key' => $key,
-                'target_at' => $validated['target_at'],
-            ]);
-        }
+        $timer = $this->timerService->upsertTimer($key, $validated['target_at']);
 
         return $this->successResponse([
             'key' => $timer->key,
@@ -61,13 +50,7 @@ class TimerController extends Controller
      */
     public function destroy(string $key): JsonResponse
     {
-        $timer = Timer::where('key', $key)->first();
-
-        if (! $timer) {
-            throw NotFoundException::forResource('Timer', $key);
-        }
-
-        $timer->delete();
+        $timer = $this->timerService->deleteTimer($key);
 
         return $this->successResponse([
             'key' => $timer->key,
