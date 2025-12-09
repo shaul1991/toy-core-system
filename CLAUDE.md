@@ -86,6 +86,7 @@ toy-core-system/
 │   ├── Models/              # Eloquent Models
 │   ├── Providers/           # Service Providers
 │   └── Shared/              # 공유 컴포넌트
+│       ├── Exceptions/      # 도메인 예외 클래스
 │       └── Http/            # HTTP 공통 모듈
 ├── config/                  # Configuration
 ├── database/                # Migrations, Seeders
@@ -93,6 +94,7 @@ toy-core-system/
 │   ├── api.php              # API Routes
 │   └── web.php              # Web Routes
 └── tests/                   # PHPUnit Tests
+    └── Unit/Shared/         # 공통 모듈 Unit Tests
 ```
 
 ### Testing
@@ -105,15 +107,17 @@ toy-core-system/
 
 ### 공통화 현황
 
-| 영역 | 상태 | 위치 | 설명 |
-|------|------|------|------|
-| HTTP Response | ✅ 완료 | `app/Shared/Http/` | API 응답 포맷 통일 |
-| Exception Handling | ✅ 완료 | `app/Shared/Exceptions/` | 예외 → API 응답 자동 변환 |
-| Form Request | ⏳ 예정 | `app/Shared/Http/Requests/` | 입력 검증 + 에러 응답 통합 |
-| DTO | ⏳ 예정 | `app/Shared/DTO/` | 레이어 간 데이터 전송 객체 |
-| Repository | ⏳ 예정 | `app/Shared/Repositories/` | 데이터 접근 추상화 인터페이스 |
-| Domain Event | ⏳ 예정 | `app/Shared/Events/` | 도메인 이벤트 기반 구조 |
-| Value Object | ⏳ 예정 | `app/Shared/ValueObjects/` | 불변 값 객체 베이스 클래스 |
+> **진행률: 2/7 (29%)**
+
+| 영역 | 상태 | 위치 | 테스트 | 설명 |
+|------|------|------|--------|------|
+| HTTP Response | ✅ 완료 | `app/Shared/Http/` | ✅ | API 응답 포맷 통일 |
+| Exception Handling | ✅ 완료 | `app/Shared/Exceptions/` | ✅ | 예외 → API 응답 자동 변환 |
+| Form Request | ⏳ 예정 | `app/Shared/Http/Requests/` | - | 입력 검증 + 에러 응답 통합 |
+| DTO | ⏳ 예정 | `app/Shared/DTO/` | - | 레이어 간 데이터 전송 객체 |
+| Repository | ⏳ 예정 | `app/Shared/Repositories/` | - | 데이터 접근 추상화 인터페이스 |
+| Domain Event | ⏳ 예정 | `app/Shared/Events/` | - | 도메인 이벤트 기반 구조 |
+| Value Object | ⏳ 예정 | `app/Shared/ValueObjects/` | - | 불변 값 객체 베이스 클래스 |
 
 ### Form Request (예정)
 
@@ -355,6 +359,11 @@ class UserController extends Controller
 - `app/Shared/Http/Pagination/CursorPagination.php` - Cursor 페이지네이션
 - `app/Shared/Http/Traits/ApiResponsable.php` - Controller Trait
 
+### 테스트 파일
+
+- `tests/Unit/Shared/Http/ApiResponseTest.php` - ApiResponse Unit 테스트
+- `tests/Unit/Shared/Http/ApiResponseCodeTest.php` - ApiResponseCode Unit 테스트
+
 ---
 
 ## Exception Handling 공통화
@@ -493,3 +502,8 @@ throw (new NotFoundException('사용자를 찾을 수 없습니다.'))
 - `app/Shared/Exceptions/DomainValidationException.php` - 도메인 검증 예외
 - `app/Shared/Exceptions/BusinessException.php` - 일반 비즈니스 예외
 - `app/Shared/Exceptions/ServiceUnavailableException.php` - 서비스 불가 예외
+
+### 테스트 파일
+
+- `tests/Unit/Shared/Exceptions/DomainExceptionTest.php` - DomainException Unit 테스트
+- `tests/Feature/Shared/Exceptions/ExceptionHandlerTest.php` - Exception Handler Feature 테스트
