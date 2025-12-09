@@ -83,9 +83,10 @@ Front → BFF → Business → Domain
 toy-core-system/
 ├── app/
 │   ├── Http/Controllers/    # API Controllers
-│   ├── Services/            # Domain Logic
 │   ├── Models/              # Eloquent Models
-│   └── Providers/           # Service Providers
+│   ├── Providers/           # Service Providers
+│   └── Shared/              # 공유 컴포넌트
+│       └── Http/            # HTTP 공통 모듈
 ├── config/                  # Configuration
 ├── database/                # Migrations, Seeders
 ├── routes/
@@ -97,3 +98,131 @@ toy-core-system/
 ### Testing
 
 테스트는 인메모리 SQLite 데이터베이스를 사용합니다 (`phpunit.xml` 참조).
+
+## HTTP Response 공통화
+
+모든 API 응답은 `ApiResponse` 클래스를 통해 일관된 포맷으로 반환됩니다.
+
+### 응답 구조
+
+**성공 응답:**
+```json
+{
+    "success": true,
+    "data": { ... },
+    "message": "optional message"
+}
+```
+
+**에러 응답:**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "ERROR_CODE",
+        "message": "에러 메시지",
+        "details": { ... }
+    }
+}
+```
+
+**페이지네이션 응답 (Offset):**
+```json
+{
+    "success": true,
+    "data": [...],
+    "pagination": {
+        "type": "offset",
+        "page": 1,
+        "per_page": 15,
+        "total": 100,
+        "last_page": 7,
+        "has_more_pages": true
+    }
+}
+```
+
+**페이지네이션 응답 (Cursor):**
+```json
+{
+    "success": true,
+    "data": [...],
+    "pagination": {
+        "type": "cursor",
+        "per_page": 15,
+        "next_cursor": "eyJpZCI6MTUsIl9wb...",
+        "prev_cursor": null,
+        "has_more_pages": true
+    }
+}
+```
+
+### 사용 방법
+
+Controller에서 `ApiResponsable` trait 메서드 사용:
+
+```php
+class UserController extends Controller
+{
+    // 성공 응답
+    public function show(User $user): JsonResponse
+    {
+        return $this->successResponse($user);
+    }
+
+    // 생성 응답 (201)
+    public function store(Request $request): JsonResponse
+    {
+        $user = User::create($request->validated());
+        return $this->createdResponse($user);
+    }
+
+    // 페이지네이션 (Offset/Cursor 자동 감지)
+    public function index(): JsonResponse
+    {
+        return $this->paginatedResponse(User::paginate(15));
+    }
+
+    // 에러 응답
+    public function error(): JsonResponse
+    {
+        return $this->notFoundResponse('사용자를 찾을 수 없습니다.');
+    }
+
+    // 커스텀 에러
+    public function customError(): JsonResponse
+    {
+        return $this->errorResponse(
+            ApiResponseCode::VALIDATION_ERROR,
+            '입력값이 올바르지 않습니다.',
+            ['email' => '이메일 형식이 올바르지 않습니다.']
+        );
+    }
+}
+```
+
+### 에러 코드 (ApiResponseCode)
+
+| Code | HTTP Status | Description |
+|------|-------------|-------------|
+| `SUCCESS` | 200 | 요청 성공 |
+| `CREATED` | 201 | 리소스 생성 |
+| `UPDATED` | 200 | 리소스 수정 |
+| `DELETED` | 200 | 리소스 삭제 |
+| `BAD_REQUEST` | 400 | 잘못된 요청 |
+| `UNAUTHORIZED` | 401 | 인증 필요 |
+| `FORBIDDEN` | 403 | 권한 없음 |
+| `NOT_FOUND` | 404 | 리소스 없음 |
+| `VALIDATION_ERROR` | 400 | 유효성 검증 실패 |
+| `CONFLICT` | 409 | 리소스 충돌 |
+| `TOO_MANY_REQUESTS` | 429 | 요청 한도 초과 |
+| `INTERNAL_ERROR` | 500 | 서버 오류 |
+| `SERVICE_UNAVAILABLE` | 503 | 서비스 불가 |
+
+### 관련 파일
+
+- `app/Shared/Http/ApiResponse.php` - 응답 빌더
+- `app/Shared/Http/ApiResponseCode.php` - 에러 코드 Enum
+- `app/Shared/Http/Pagination/OffsetPagination.php` - Offset 페이지네이션
+- `app/Shared/Http/Pagination/CursorPagination.php` - Cursor 페이지네이션
+- `app/Shared/Http/Traits/ApiResponsable.php` - Controller Trait
