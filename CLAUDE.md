@@ -108,28 +108,12 @@ toy-core-system/
 | 영역 | 상태 | 위치 | 설명 |
 |------|------|------|------|
 | HTTP Response | ✅ 완료 | `app/Shared/Http/` | API 응답 포맷 통일 |
-| Exception Handling | ⏳ 예정 | `app/Shared/Exceptions/` | 예외 → API 응답 자동 변환 |
+| Exception Handling | ✅ 완료 | `app/Shared/Exceptions/` | 예외 → API 응답 자동 변환 |
 | Form Request | ⏳ 예정 | `app/Shared/Http/Requests/` | 입력 검증 + 에러 응답 통합 |
 | DTO | ⏳ 예정 | `app/Shared/DTO/` | 레이어 간 데이터 전송 객체 |
 | Repository | ⏳ 예정 | `app/Shared/Repositories/` | 데이터 접근 추상화 인터페이스 |
 | Domain Event | ⏳ 예정 | `app/Shared/Events/` | 도메인 이벤트 기반 구조 |
 | Value Object | ⏳ 예정 | `app/Shared/ValueObjects/` | 불변 값 객체 베이스 클래스 |
-
-### Exception Handling (예정)
-
-도메인 예외를 API 응답으로 자동 변환합니다.
-
-```php
-// 도메인에서 예외 발생
-throw new UserNotFoundException($userId);
-
-// 자동으로 API 응답 변환
-// → {"success": false, "error": {"code": "USER_NOT_FOUND", "message": "..."}}
-```
-
-**구현 예정 파일:**
-- `app/Shared/Exceptions/DomainException.php` - 도메인 예외 베이스
-- `app/Shared/Exceptions/Handler.php` - 예외 핸들러
 
 ### Form Request (예정)
 
@@ -370,3 +354,142 @@ class UserController extends Controller
 - `app/Shared/Http/Pagination/OffsetPagination.php` - Offset 페이지네이션
 - `app/Shared/Http/Pagination/CursorPagination.php` - Cursor 페이지네이션
 - `app/Shared/Http/Traits/ApiResponsable.php` - Controller Trait
+
+---
+
+## Exception Handling 공통화
+
+도메인 예외를 API 응답으로 자동 변환합니다. `api/*` 경로의 요청이나 `Accept: application/json` 헤더가 있는 요청에서 예외가 발생하면 자동으로 JSON 에러 응답을 반환합니다.
+
+### 사용 방법
+
+서비스나 도메인 레이어에서 예외를 throw하면 자동으로 API 응답으로 변환됩니다:
+
+```php
+use App\Shared\Exceptions\NotFoundException;
+use App\Shared\Exceptions\ConflictException;
+use App\Shared\Exceptions\DomainValidationException;
+
+class UserService
+{
+    public function findUser(int $id): User
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            // 자동으로 404 JSON 응답 반환
+            throw NotFoundException::forResource('User', $id);
+        }
+
+        return $user;
+    }
+
+    public function createUser(array $data): User
+    {
+        if (User::where('email', $data['email'])->exists()) {
+            // 자동으로 409 JSON 응답 반환
+            throw ConflictException::duplicateField('email', $data['email']);
+        }
+
+        return User::create($data);
+    }
+
+    public function validateAge(int $age): void
+    {
+        if ($age < 0) {
+            // 자동으로 400 JSON 응답 반환
+            throw DomainValidationException::forField('age', '나이는 0보다 커야 합니다.');
+        }
+    }
+}
+```
+
+### 예외 클래스
+
+| 예외 클래스 | HTTP Status | ApiResponseCode | 용도 |
+|------------|-------------|-----------------|------|
+| `NotFoundException` | 404 | `NOT_FOUND` | 리소스를 찾을 수 없을 때 |
+| `BadRequestException` | 400 | `BAD_REQUEST` | 잘못된 요청 |
+| `UnauthorizedException` | 401 | `UNAUTHORIZED` | 인증 필요 |
+| `ForbiddenException` | 403 | `FORBIDDEN` | 접근 권한 없음 |
+| `ConflictException` | 409 | `CONFLICT` | 리소스 충돌 (중복 등) |
+| `DomainValidationException` | 400 | `VALIDATION_ERROR` | 도메인 규칙 검증 실패 |
+| `BusinessException` | 400 | `BAD_REQUEST` | 일반 비즈니스 로직 예외 |
+| `ServiceUnavailableException` | 503 | `SERVICE_UNAVAILABLE` | 서비스 이용 불가 |
+
+### 팩토리 메서드
+
+각 예외 클래스는 편의를 위한 팩토리 메서드를 제공합니다:
+
+```php
+// NotFoundException
+NotFoundException::forResource('User', 123);
+NotFoundException::forCriteria('User', ['email' => 'test@example.com']);
+
+// ConflictException
+ConflictException::duplicateField('email', 'test@example.com');
+ConflictException::resourceExists('User', 'test@example.com');
+
+// ForbiddenException
+ForbiddenException::forResource('Post', 123);
+ForbiddenException::forAction('delete');
+
+// DomainValidationException
+DomainValidationException::forField('email', '이메일 형식이 올바르지 않습니다.');
+DomainValidationException::withErrors([
+    'email' => '이메일 형식이 올바르지 않습니다.',
+    'name' => '이름은 필수입니다.',
+]);
+
+// ServiceUnavailableException
+ServiceUnavailableException::forService('PaymentGateway');
+ServiceUnavailableException::maintenance();
+
+// BusinessException (커스텀 코드 사용)
+BusinessException::withCode(ApiResponseCode::TOO_MANY_REQUESTS, '요청이 너무 많습니다.');
+```
+
+### 상세 정보 추가
+
+예외에 추가 정보를 포함할 수 있습니다:
+
+```php
+throw (new NotFoundException('사용자를 찾을 수 없습니다.'))
+    ->withDetails(['searched_id' => 123, 'searched_at' => now()]);
+
+// 응답:
+// {
+//     "success": false,
+//     "error": {
+//         "code": "NOT_FOUND",
+//         "message": "사용자를 찾을 수 없습니다.",
+//         "details": {"searched_id": 123, "searched_at": "2024-01-01T00:00:00Z"}
+//     }
+// }
+```
+
+### Laravel 예외 자동 변환
+
+다음 Laravel 예외들도 자동으로 API 응답으로 변환됩니다:
+
+| Laravel 예외 | 변환 결과 |
+|-------------|----------|
+| `ValidationException` | 400 VALIDATION_ERROR + 필드별 에러 상세 |
+| `AuthenticationException` | 401 UNAUTHORIZED |
+| `AuthorizationException` | 403 FORBIDDEN |
+| `ModelNotFoundException` | 404 NOT_FOUND (모델명 포함) |
+| `NotFoundHttpException` | 404 NOT_FOUND |
+| 기타 `HttpException` | 해당 HTTP 상태 코드 |
+
+### 관련 파일
+
+- `app/Shared/Exceptions/DomainException.php` - 도메인 예외 베이스 클래스
+- `app/Shared/Exceptions/Handler.php` - 예외 핸들러 (bootstrap/app.php에서 등록)
+- `app/Shared/Exceptions/NotFoundException.php` - 리소스 없음 예외
+- `app/Shared/Exceptions/BadRequestException.php` - 잘못된 요청 예외
+- `app/Shared/Exceptions/UnauthorizedException.php` - 인증 필요 예외
+- `app/Shared/Exceptions/ForbiddenException.php` - 권한 없음 예외
+- `app/Shared/Exceptions/ConflictException.php` - 리소스 충돌 예외
+- `app/Shared/Exceptions/DomainValidationException.php` - 도메인 검증 예외
+- `app/Shared/Exceptions/BusinessException.php` - 일반 비즈니스 예외
+- `app/Shared/Exceptions/ServiceUnavailableException.php` - 서비스 불가 예외
