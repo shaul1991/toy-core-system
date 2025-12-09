@@ -28,7 +28,7 @@ final class ApiResponse
 
     public static function success(mixed $data = null, ?string $message = null): self
     {
-        $response = new self();
+        $response = new self;
         $response->success = true;
         $response->data = $data;
         $response->message = $message;
@@ -39,7 +39,7 @@ final class ApiResponse
 
     public static function created(mixed $data = null, ?string $message = null): self
     {
-        $response = new self();
+        $response = new self;
         $response->success = true;
         $response->data = $data;
         $response->message = $message ?? ApiResponseCode::CREATED->defaultMessage();
@@ -53,7 +53,7 @@ final class ApiResponse
         ?string $message = null,
         ?array $details = null
     ): self {
-        $response = new self();
+        $response = new self;
         $response->success = false;
         $response->code = $code;
         $response->error = [
@@ -72,7 +72,7 @@ final class ApiResponse
         LengthAwarePaginator|CursorPaginator $paginator,
         ?string $message = null
     ): self {
-        $response = new self();
+        $response = new self;
         $response->success = true;
         $response->data = $paginator->items();
         $response->message = $message;
