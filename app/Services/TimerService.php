@@ -64,7 +64,8 @@ class TimerService
         }
 
         $this->timerRepository->delete($timer);
+        $timer->refresh();
 
-        return $timer->fresh();
+        return $timer;
     }
 }

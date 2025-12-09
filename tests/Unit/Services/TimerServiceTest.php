@@ -147,7 +147,6 @@ class TimerServiceTest extends TestCase
     public function test_delete_timer_soft_deletes_and_returns_timer(): void
     {
         $timer = $this->createTimerMock('delete-key');
-        $deletedTimer = $this->createTimerMock('delete-key');
 
         $this->timerRepository
             ->shouldReceive('findByKey')
@@ -161,13 +160,13 @@ class TimerServiceTest extends TestCase
             ->once()
             ->andReturn(true);
 
-        $timer->shouldReceive('fresh')
+        $timer->shouldReceive('refresh')
             ->once()
-            ->andReturn($deletedTimer);
+            ->andReturnSelf();
 
         $result = $this->timerService->deleteTimer('delete-key');
 
-        $this->assertSame($deletedTimer, $result);
+        $this->assertSame($timer, $result);
     }
 
     public function test_delete_timer_throws_not_found_exception_when_not_found(): void

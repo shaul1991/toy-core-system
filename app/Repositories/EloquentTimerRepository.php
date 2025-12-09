@@ -41,8 +41,9 @@ class EloquentTimerRepository implements TimerRepositoryInterface
     public function update(Timer $timer, string $targetAt): Timer
     {
         $timer->update(['target_at' => $targetAt]);
+        $timer->refresh();
 
-        return $timer->fresh();
+        return $timer;
     }
 
     /**
