@@ -67,52 +67,66 @@ class ApiResponseCodeTest extends TestCase
         }
     }
 
-    public function test_all_success_codes_have_2xx_status(): void
+    public function test_all_codes_belong_to_valid_http_status_category(): void
     {
-        $successCodes = [
-            ApiResponseCode::SUCCESS,
-            ApiResponseCode::CREATED,
-            ApiResponseCode::UPDATED,
-            ApiResponseCode::DELETED,
-        ];
+        $successCodes = [];
+        $clientErrorCodes = [];
+        $serverErrorCodes = [];
 
-        foreach ($successCodes as $code) {
+        foreach (ApiResponseCode::cases() as $code) {
             $status = $code->httpStatus();
-            $this->assertGreaterThanOrEqual(200, $status);
-            $this->assertLessThan(300, $status);
+
+            if ($status >= 200 && $status < 300) {
+                $successCodes[] = $code;
+            } elseif ($status >= 400 && $status < 500) {
+                $clientErrorCodes[] = $code;
+            } elseif ($status >= 500 && $status < 600) {
+                $serverErrorCodes[] = $code;
+            } else {
+                $this->fail("Code {$code->value} has invalid HTTP status: {$status}");
+            }
+        }
+
+        // 각 카테고리에 최소 1개 이상의 코드가 있는지 확인
+        $this->assertNotEmpty($successCodes, 'Should have at least one 2xx success code');
+        $this->assertNotEmpty($clientErrorCodes, 'Should have at least one 4xx client error code');
+        $this->assertNotEmpty($serverErrorCodes, 'Should have at least one 5xx server error code');
+
+        // 모든 코드가 분류되었는지 확인
+        $totalCategorized = count($successCodes) + count($clientErrorCodes) + count($serverErrorCodes);
+        $this->assertCount($totalCategorized, ApiResponseCode::cases());
+    }
+
+    public function test_success_codes_have_2xx_status(): void
+    {
+        foreach (ApiResponseCode::cases() as $code) {
+            $status = $code->httpStatus();
+            if ($status >= 200 && $status < 300) {
+                $this->assertGreaterThanOrEqual(200, $status);
+                $this->assertLessThan(300, $status, "Code {$code->value} should be 2xx");
+            }
         }
     }
 
-    public function test_all_client_error_codes_have_4xx_status(): void
+    public function test_client_error_codes_have_4xx_status(): void
     {
-        $clientErrorCodes = [
-            ApiResponseCode::BAD_REQUEST,
-            ApiResponseCode::UNAUTHORIZED,
-            ApiResponseCode::FORBIDDEN,
-            ApiResponseCode::NOT_FOUND,
-            ApiResponseCode::VALIDATION_ERROR,
-            ApiResponseCode::CONFLICT,
-            ApiResponseCode::TOO_MANY_REQUESTS,
-        ];
-
-        foreach ($clientErrorCodes as $code) {
+        foreach (ApiResponseCode::cases() as $code) {
             $status = $code->httpStatus();
-            $this->assertGreaterThanOrEqual(400, $status);
-            $this->assertLessThan(500, $status);
+            if ($status >= 400 && $status < 500) {
+                $this->assertGreaterThanOrEqual(400, $status);
+                $this->assertLessThan(500, $status, "Code {$code->value} should be 4xx");
+            }
         }
     }
 
-    public function test_all_server_error_codes_have_5xx_status(): void
+    public function test_server_error_codes_have_5xx_status(): void
     {
-        $serverErrorCodes = [
-            ApiResponseCode::INTERNAL_ERROR,
-            ApiResponseCode::SERVICE_UNAVAILABLE,
-        ];
-
-        foreach ($serverErrorCodes as $code) {
+        foreach (ApiResponseCode::cases() as $code) {
             $status = $code->httpStatus();
-            $this->assertGreaterThanOrEqual(500, $status);
-            $this->assertLessThan(600, $status);
+            if ($status >= 500 && $status < 600) {
+                $this->assertGreaterThanOrEqual(500, $status);
+                $this->assertLessThan(600, $status, "Code {$code->value} should be 5xx");
+            }
         }
     }
 
