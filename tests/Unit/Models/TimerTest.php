@@ -5,125 +5,22 @@ declare(strict_types=1);
 namespace Tests\Unit\Models;
 
 use App\Models\Timer;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use PHPUnit\Framework\Attributes\DataProvider;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
+/**
+ * Timer 모델 속성 및 Eloquent 기능 테스트
+ * Laravel 컨테이너가 필요한 테스트
+ */
 class TimerTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected function tearDown(): void
     {
-        parent::tearDown();
         Carbon::setTestNow();
-    }
-
-    // ========================================
-    // calculateRemainingSeconds 테스트 (DataProvider)
-    // ========================================
-
-    #[DataProvider('remainingSecondsProvider')]
-    public function test_calculate_remaining_seconds(
-        string $now,
-        string $targetAt,
-        int $expectedSeconds,
-        string $description
-    ): void {
-        Carbon::setTestNow($now);
-
-        $result = Timer::calculateRemainingSeconds(Carbon::parse($targetAt));
-
-        $this->assertEquals($expectedSeconds, $result, $description);
-    }
-
-    public static function remainingSecondsProvider(): array
-    {
-        return [
-            // [현재 시간, 목표 시간, 예상 결과, 설명]
-            'target_1_hour_in_future' => [
-                '2025-01-01 00:00:00',
-                '2025-01-01 01:00:00',
-                -3600,
-                '1시간 후 목표 → -3600초 (남음)',
-            ],
-            'target_1_hour_in_past' => [
-                '2025-01-01 02:00:00',
-                '2025-01-01 01:00:00',
-                3600,
-                '1시간 전 목표 → +3600초 (지남)',
-            ],
-            'target_is_now' => [
-                '2025-01-01 00:00:00',
-                '2025-01-01 00:00:00',
-                0,
-                '현재와 동일 → 0초',
-            ],
-            'target_30_seconds_in_future' => [
-                '2025-01-01 00:00:00',
-                '2025-01-01 00:00:30',
-                -30,
-                '30초 후 목표 → -30초 (남음)',
-            ],
-            'target_30_seconds_in_past' => [
-                '2025-01-01 00:00:30',
-                '2025-01-01 00:00:00',
-                30,
-                '30초 전 목표 → +30초 (지남)',
-            ],
-            'target_1_minute_in_future' => [
-                '2025-01-01 00:00:00',
-                '2025-01-01 00:01:00',
-                -60,
-                '1분 후 목표 → -60초 (남음)',
-            ],
-            'target_1_day_in_future' => [
-                '2025-01-01 00:00:00',
-                '2025-01-02 00:00:00',
-                -86400,
-                '1일 후 목표 → -86400초 (남음)',
-            ],
-            'target_1_day_in_past' => [
-                '2025-01-02 00:00:00',
-                '2025-01-01 00:00:00',
-                86400,
-                '1일 전 목표 → +86400초 (지남)',
-            ],
-            'target_1_week_in_future' => [
-                '2025-01-01 00:00:00',
-                '2025-01-08 00:00:00',
-                -604800,
-                '1주 후 목표 → -604800초 (남음)',
-            ],
-        ];
-    }
-
-    // ========================================
-    // 경계값 테스트
-    // ========================================
-
-    public function test_remaining_seconds_with_large_time_difference(): void
-    {
-        Carbon::setTestNow('2025-01-01 00:00:00');
-
-        $targetAt = Carbon::parse('2025-12-31 23:59:59'); // ~365 days later
-
-        $result = Timer::calculateRemainingSeconds($targetAt);
-
-        // 약 31,535,999초 (365일 - 1초)
-        $this->assertLessThan(0, $result);
-        $this->assertLessThan(-31000000, $result);
-        $this->assertGreaterThan(-32000000, $result);
-    }
-
-    public function test_remaining_seconds_with_milliseconds_ignored(): void
-    {
-        Carbon::setTestNow('2025-01-01 00:00:00.500');
-
-        $targetAt = Carbon::parse('2025-01-01 00:00:01.500');
-
-        $result = Timer::calculateRemainingSeconds($targetAt);
-
-        // 밀리초는 무시되고 초 단위로 계산
-        $this->assertEquals(-1, $result);
+        parent::tearDown();
     }
 
     // ========================================
@@ -146,6 +43,19 @@ class TimerTest extends TestCase
         $this->assertEquals('datetime', $casts['target_at']);
     }
 
+    public function test_deleted_at_is_cast_to_datetime(): void
+    {
+        $timer = new Timer;
+        $casts = $timer->getCasts();
+
+        $this->assertArrayHasKey('deleted_at', $casts);
+        $this->assertEquals('datetime', $casts['deleted_at']);
+    }
+
+    // ========================================
+    // SoftDeletes 테스트
+    // ========================================
+
     public function test_timer_uses_soft_deletes(): void
     {
         $timer = new Timer;
@@ -156,12 +66,90 @@ class TimerTest extends TestCase
         );
     }
 
-    public function test_deleted_at_is_cast_to_datetime(): void
+    public function test_timer_can_be_soft_deleted(): void
     {
-        $timer = new Timer;
-        $casts = $timer->getCasts();
+        $timer = Timer::create([
+            'key' => 'soft-delete-test',
+            'target_at' => '2025-12-31 23:59:59',
+        ]);
 
-        $this->assertArrayHasKey('deleted_at', $casts);
-        $this->assertEquals('datetime', $casts['deleted_at']);
+        $timer->delete();
+
+        $this->assertSoftDeleted('timers', ['key' => 'soft-delete-test']);
+        $this->assertNull(Timer::find($timer->id));
+        $this->assertNotNull(Timer::withTrashed()->find($timer->id));
+    }
+
+    public function test_soft_deleted_timer_can_be_restored(): void
+    {
+        $timer = Timer::create([
+            'key' => 'restore-test',
+            'target_at' => '2025-12-31 23:59:59',
+        ]);
+
+        $timer->delete();
+        $timer->restore();
+
+        $this->assertNotSoftDeleted('timers', ['key' => 'restore-test']);
+        $this->assertNotNull(Timer::find($timer->id));
+    }
+
+    // ========================================
+    // Accessor 테스트
+    // ========================================
+
+    public function test_remaining_seconds_accessor_returns_negative_for_future_target(): void
+    {
+        Carbon::setTestNow('2025-01-01 00:00:00');
+
+        $timer = Timer::create([
+            'key' => 'accessor-future-test',
+            'target_at' => '2025-01-01 01:00:00',
+        ]);
+
+        $this->assertEquals(-3600, $timer->remaining_seconds);
+    }
+
+    public function test_remaining_seconds_accessor_returns_positive_for_past_target(): void
+    {
+        Carbon::setTestNow('2025-01-01 02:00:00');
+
+        $timer = Timer::create([
+            'key' => 'accessor-past-test',
+            'target_at' => '2025-01-01 01:00:00',
+        ]);
+
+        $this->assertEquals(3600, $timer->remaining_seconds);
+    }
+
+    // ========================================
+    // 데이터베이스 테스트
+    // ========================================
+
+    public function test_timer_can_be_created_with_key_and_target_at(): void
+    {
+        $timer = Timer::create([
+            'key' => 'create-test',
+            'target_at' => '2025-12-31 23:59:59',
+        ]);
+
+        $this->assertDatabaseHas('timers', ['key' => 'create-test']);
+        $this->assertEquals('create-test', $timer->key);
+        $this->assertInstanceOf(Carbon::class, $timer->target_at);
+    }
+
+    public function test_timer_key_must_be_unique(): void
+    {
+        Timer::create([
+            'key' => 'unique-key',
+            'target_at' => '2025-12-31 23:59:59',
+        ]);
+
+        $this->expectException(\Illuminate\Database\QueryException::class);
+
+        Timer::create([
+            'key' => 'unique-key',
+            'target_at' => '2025-06-15 12:00:00',
+        ]);
     }
 }
