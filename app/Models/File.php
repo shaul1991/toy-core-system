@@ -5,13 +5,14 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Storage;
 
 class File extends Model
 {
-    use HasUuids, SoftDeletes;
+    use HasFactory, HasUuids, SoftDeletes;
 
     /**
      * The attributes that are mass assignable.
@@ -91,5 +92,23 @@ class File extends Model
         }
 
         return round($bytes, 2).' '.$units[$i];
+    }
+
+    /**
+     * ETag 생성 (캐시 검증용)
+     *
+     * stored_name (UUID)과 size를 조합하여 고유한 ETag를 생성합니다.
+     */
+    public function getEtagAttribute(): string
+    {
+        return '"'.md5($this->stored_name.'-'.$this->size).'"';
+    }
+
+    /**
+     * Last-Modified 타임스탬프 반환 (HTTP 헤더용)
+     */
+    public function getLastModifiedAttribute(): string
+    {
+        return $this->updated_at->format('D, d M Y H:i:s').' GMT';
     }
 }

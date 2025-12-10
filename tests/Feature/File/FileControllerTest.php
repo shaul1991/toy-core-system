@@ -439,4 +439,229 @@ class FileControllerTest extends TestCase
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['expiration_minutes']);
     }
+
+    // ========================================
+    // GET /api/files - 파일 목록 조회
+    // ========================================
+
+    public function test_can_list_files(): void
+    {
+        File::factory()->count(5)->create(['visibility' => 'private']);
+
+        $response = $this->getJson('/api/files');
+
+        $response->assertStatus(200)
+            ->assertJson(['success' => true])
+            ->assertJsonStructure([
+                'success',
+                'data' => [
+                    '*' => [
+                        'id',
+                        'original_name',
+                        'mime_type',
+                        'size',
+                        'visibility',
+                    ],
+                ],
+                'pagination' => [
+                    'type',
+                    'per_page',
+                    'next_cursor',
+                    'prev_cursor',
+                    'has_more_pages',
+                ],
+            ]);
+    }
+
+    public function test_can_list_files_with_visibility_filter(): void
+    {
+        File::factory()->count(3)->create(['visibility' => 'public']);
+        File::factory()->count(2)->create(['visibility' => 'private']);
+
+        $response = $this->getJson('/api/files?visibility=public');
+
+        $response->assertStatus(200);
+        $this->assertCount(3, $response->json('data'));
+    }
+
+    public function test_can_list_files_with_mime_type_filter(): void
+    {
+        File::factory()->count(2)->create(['mime_type' => 'image/jpeg']);
+        File::factory()->count(3)->create(['mime_type' => 'application/pdf']);
+
+        $response = $this->getJson('/api/files?mime_type=image/jpeg');
+
+        $response->assertStatus(200);
+        $this->assertCount(2, $response->json('data'));
+    }
+
+    public function test_can_list_files_with_pagination(): void
+    {
+        File::factory()->count(20)->create();
+
+        $response = $this->getJson('/api/files?per_page=5');
+
+        $response->assertStatus(200);
+        $this->assertCount(5, $response->json('data'));
+        $this->assertTrue($response->json('pagination.has_more_pages'));
+    }
+
+    public function test_list_validates_per_page_range(): void
+    {
+        $response = $this->getJson('/api/files?per_page=200');
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['per_page']);
+    }
+
+    // ========================================
+    // 다운로드 최적화 테스트
+    // ========================================
+
+    public function test_download_returns_etag_header(): void
+    {
+        Storage::disk('minio-private')->put('2025/01/01/etag-test.txt', 'Hello World');
+
+        $file = File::create([
+            'original_name' => 'etag-test.txt',
+            'stored_name' => 'etag-test.txt',
+            'path' => '2025/01/01',
+            'disk' => 'minio-private',
+            'mime_type' => 'text/plain',
+            'size' => 11,
+            'visibility' => 'private',
+        ]);
+
+        $response = $this->get("/api/files/{$file->id}/download");
+
+        $response->assertStatus(200)
+            ->assertHeader('ETag');
+    }
+
+    public function test_download_returns_last_modified_header(): void
+    {
+        Storage::disk('minio-private')->put('2025/01/01/lm-test.txt', 'Hello World');
+
+        $file = File::create([
+            'original_name' => 'lm-test.txt',
+            'stored_name' => 'lm-test.txt',
+            'path' => '2025/01/01',
+            'disk' => 'minio-private',
+            'mime_type' => 'text/plain',
+            'size' => 11,
+            'visibility' => 'private',
+        ]);
+
+        $response = $this->get("/api/files/{$file->id}/download");
+
+        $response->assertStatus(200)
+            ->assertHeader('Last-Modified');
+    }
+
+    public function test_download_returns_304_with_matching_etag(): void
+    {
+        Storage::disk('minio-private')->put('2025/01/01/304-test.txt', 'Hello World');
+
+        $file = File::create([
+            'original_name' => '304-test.txt',
+            'stored_name' => '304-test.txt',
+            'path' => '2025/01/01',
+            'disk' => 'minio-private',
+            'mime_type' => 'text/plain',
+            'size' => 11,
+            'visibility' => 'private',
+        ]);
+
+        $response = $this->withHeaders([
+            'If-None-Match' => $file->etag,
+        ])->get("/api/files/{$file->id}/download");
+
+        $response->assertStatus(304);
+    }
+
+    public function test_download_returns_304_with_if_modified_since(): void
+    {
+        Storage::disk('minio-private')->put('2025/01/01/ims-test.txt', 'Hello World');
+
+        $file = File::create([
+            'original_name' => 'ims-test.txt',
+            'stored_name' => 'ims-test.txt',
+            'path' => '2025/01/01',
+            'disk' => 'minio-private',
+            'mime_type' => 'text/plain',
+            'size' => 11,
+            'visibility' => 'private',
+        ]);
+
+        $response = $this->withHeaders([
+            'If-Modified-Since' => $file->last_modified,
+        ])->get("/api/files/{$file->id}/download");
+
+        $response->assertStatus(304);
+    }
+
+    public function test_download_returns_accept_ranges_header(): void
+    {
+        Storage::disk('minio-private')->put('2025/01/01/range-test.txt', 'Hello World');
+
+        $file = File::create([
+            'original_name' => 'range-test.txt',
+            'stored_name' => 'range-test.txt',
+            'path' => '2025/01/01',
+            'disk' => 'minio-private',
+            'mime_type' => 'text/plain',
+            'size' => 11,
+            'visibility' => 'private',
+        ]);
+
+        $response = $this->get("/api/files/{$file->id}/download");
+
+        $response->assertStatus(200)
+            ->assertHeader('Accept-Ranges', 'bytes');
+    }
+
+    public function test_download_handles_range_request(): void
+    {
+        Storage::disk('minio-private')->put('2025/01/01/partial-test.txt', 'Hello World');
+
+        $file = File::create([
+            'original_name' => 'partial-test.txt',
+            'stored_name' => 'partial-test.txt',
+            'path' => '2025/01/01',
+            'disk' => 'minio-private',
+            'mime_type' => 'text/plain',
+            'size' => 11,
+            'visibility' => 'private',
+        ]);
+
+        $response = $this->withHeaders([
+            'Range' => 'bytes=0-4',
+        ])->get("/api/files/{$file->id}/download");
+
+        $response->assertStatus(206)
+            ->assertHeader('Content-Range', 'bytes 0-4/11')
+            ->assertHeader('Content-Length', '5');
+    }
+
+    public function test_download_handles_suffix_range_request(): void
+    {
+        Storage::disk('minio-private')->put('2025/01/01/suffix-test.txt', 'Hello World');
+
+        $file = File::create([
+            'original_name' => 'suffix-test.txt',
+            'stored_name' => 'suffix-test.txt',
+            'path' => '2025/01/01',
+            'disk' => 'minio-private',
+            'mime_type' => 'text/plain',
+            'size' => 11,
+            'visibility' => 'private',
+        ]);
+
+        $response = $this->withHeaders([
+            'Range' => 'bytes=-5',
+        ])->get("/api/files/{$file->id}/download");
+
+        $response->assertStatus(206)
+            ->assertHeader('Content-Range', 'bytes 6-10/11');
+    }
 }

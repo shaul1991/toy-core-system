@@ -25,6 +25,48 @@ class MinioFileRepository implements FileRepositoryInterface
     }
 
     /**
+     * 파일 목록 조회 (Cursor 기반 페이지네이션)
+     *
+     * @param  array{
+     *     visibility?: string,
+     *     mime_type?: string,
+     *     path_prefix?: string,
+     *     created_from?: string,
+     *     created_to?: string
+     * }  $filters
+     */
+    public function paginate(int $perPage = 15, ?string $cursor = null, array $filters = []): \Illuminate\Contracts\Pagination\CursorPaginator
+    {
+        $query = File::query()->orderBy('created_at', 'desc');
+
+        // visibility 필터
+        if (isset($filters['visibility'])) {
+            $query->where('visibility', $filters['visibility']);
+        }
+
+        // mime_type 필터
+        if (isset($filters['mime_type'])) {
+            $query->where('mime_type', $filters['mime_type']);
+        }
+
+        // path prefix 필터
+        if (isset($filters['path_prefix'])) {
+            $query->where('path', 'like', $filters['path_prefix'].'%');
+        }
+
+        // created_at 범위 필터
+        if (isset($filters['created_from'])) {
+            $query->where('created_at', '>=', $filters['created_from']);
+        }
+
+        if (isset($filters['created_to'])) {
+            $query->where('created_at', '<=', $filters['created_to']);
+        }
+
+        return $query->cursorPaginate($perPage, ['*'], 'cursor', $cursor);
+    }
+
+    /**
      * ID로 파일 조회 (삭제된 것 포함)
      */
     public function findByIdWithTrashed(string $id): ?File
@@ -184,13 +226,94 @@ class MinioFileRepository implements FileRepositoryInterface
     }
 
     /**
-     * 디스크 간 파일 이동
+     * 디스크 간 파일 이동 (S3 CopyObject API 사용)
+     *
+     * S3 서버 사이드 복사를 사용하여 대용량 파일도 효율적으로 이동합니다.
+     * 클라이언트를 거치지 않고 MinIO/S3 서버 간 직접 복사가 이루어집니다.
      *
      * @throws \RuntimeException
      */
     private function moveFileBetweenDisks(File $file, string $fromDisk, string $toDisk): void
     {
         $fullPath = $file->full_path;
+
+        try {
+            // S3 서버 사이드 복사 시도
+            if ($this->copyBetweenDisksUsingS3Api($fullPath, $fromDisk, $toDisk)) {
+                // 복사 성공 시 원본 삭제
+                $this->deleteSourceAfterCopy($file, $fullPath, $fromDisk, $toDisk);
+
+                return;
+            }
+
+            // S3 API 실패 시 스트림 기반 복사로 폴백
+            Log::info('S3 CopyObject 실패, 스트림 복사로 폴백', [
+                'file_id' => $file->id,
+                'path' => $fullPath,
+            ]);
+
+            $this->copyBetweenDisksUsingStream($file, $fullPath, $fromDisk, $toDisk);
+            $this->deleteSourceAfterCopy($file, $fullPath, $fromDisk, $toDisk);
+        } catch (\Throwable $e) {
+            // 복사 실패 시 대상 파일 정리
+            if (Storage::disk($toDisk)->exists($fullPath)) {
+                Storage::disk($toDisk)->delete($fullPath);
+            }
+
+            Log::error('디스크 간 파일 이동 실패', [
+                'file_id' => $file->id,
+                'path' => $fullPath,
+                'from_disk' => $fromDisk,
+                'to_disk' => $toDisk,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        }
+    }
+
+    /**
+     * S3 CopyObject API를 사용한 디스크 간 복사
+     *
+     * 서버 사이드 복사로 네트워크 트래픽과 메모리 사용을 최소화합니다.
+     */
+    private function copyBetweenDisksUsingS3Api(string $fullPath, string $fromDisk, string $toDisk): bool
+    {
+        try {
+            $fromAdapter = Storage::disk($fromDisk);
+            $toAdapter = Storage::disk($toDisk);
+
+            // S3 클라이언트 및 버킷 정보 가져오기
+            /** @var \Aws\S3\S3Client $s3Client */
+            $s3Client = $fromAdapter->getClient();
+            $fromBucket = $fromAdapter->getConfig()['bucket'] ?? config("filesystems.disks.{$fromDisk}.bucket");
+            $toBucket = $toAdapter->getConfig()['bucket'] ?? config("filesystems.disks.{$toDisk}.bucket");
+
+            // S3 CopyObject 실행
+            $s3Client->copyObject([
+                'Bucket' => $toBucket,
+                'Key' => $fullPath,
+                'CopySource' => urlencode("{$fromBucket}/{$fullPath}"),
+            ]);
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::warning('S3 CopyObject API 호출 실패', [
+                'path' => $fullPath,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    /**
+     * 스트림 기반 디스크 간 복사 (폴백)
+     *
+     * @throws \RuntimeException
+     */
+    private function copyBetweenDisksUsingStream(File $file, string $fullPath, string $fromDisk, string $toDisk): void
+    {
         $stream = null;
 
         try {
@@ -205,28 +328,20 @@ class MinioFileRepository implements FileRepositoryInterface
             if (! $written) {
                 throw new \RuntimeException("대상 디스크에 파일을 쓸 수 없습니다: {$fullPath}");
             }
-        } catch (\Throwable $e) {
-            // 쓰기 실패 시 대상 파일 정리 시도 (존재하는 경우에만)
-            if (Storage::disk($toDisk)->exists($fullPath)) {
-                Storage::disk($toDisk)->delete($fullPath);
-            }
-
-            Log::error('디스크 간 파일 이동 실패', [
-                'file_id' => $file->id,
-                'path' => $fullPath,
-                'from_disk' => $fromDisk,
-                'to_disk' => $toDisk,
-                'error' => $e->getMessage(),
-            ]);
-
-            throw $e;
         } finally {
             if (is_resource($stream)) {
                 fclose($stream);
             }
         }
+    }
 
-        // 원본 파일 삭제
+    /**
+     * 복사 후 원본 파일 삭제
+     *
+     * @throws \RuntimeException
+     */
+    private function deleteSourceAfterCopy(File $file, string $fullPath, string $fromDisk, string $toDisk): void
+    {
         if (! Storage::disk($fromDisk)->delete($fullPath)) {
             // 원본 삭제 실패 시 대상 파일 롤백
             $targetDeleted = Storage::disk($toDisk)->delete($fullPath);

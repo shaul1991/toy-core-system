@@ -33,6 +33,27 @@ class FileService
     }
 
     /**
+     * 파일 목록 조회 (Cursor 기반 페이지네이션)
+     *
+     * @param  array{
+     *     visibility?: string,
+     *     mime_type?: string,
+     *     path_prefix?: string,
+     *     created_from?: string,
+     *     created_to?: string
+     * }  $filters
+     */
+    public function listFiles(int $perPage = 15, ?string $cursor = null, array $filters = []): \Illuminate\Contracts\Pagination\CursorPaginator
+    {
+        // visibility 필터 검증
+        if (isset($filters['visibility'])) {
+            $this->validateVisibility($filters['visibility']);
+        }
+
+        return $this->fileRepository->paginate($perPage, $cursor, $filters);
+    }
+
+    /**
      * 파일 업로드
      *
      * @throws BadRequestException
