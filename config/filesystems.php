@@ -60,6 +60,42 @@ return [
             'report' => false,
         ],
 
+        /*
+        |--------------------------------------------------------------------------
+        | MinIO Disks (Multi-Bucket Strategy)
+        |--------------------------------------------------------------------------
+        |
+        | MinIO는 S3 호환 Object Storage입니다.
+        | 용도별로 버킷을 분리하여 접근 정책을 독립적으로 관리합니다.
+        |
+        */
+
+        'minio-public' => [
+            'driver' => 's3',
+            'key' => env('MINIO_ACCESS_KEY_ID'),
+            'secret' => env('MINIO_SECRET_ACCESS_KEY'),
+            'region' => env('MINIO_REGION', 'us-east-1'),
+            'bucket' => env('MINIO_PUBLIC_BUCKET', 'public'),
+            'url' => env('MINIO_URL'),
+            'endpoint' => env('MINIO_ENDPOINT'),
+            'use_path_style_endpoint' => env('MINIO_USE_PATH_STYLE_ENDPOINT', true),
+            'visibility' => 'public',
+            'throw' => true,
+        ],
+
+        'minio-private' => [
+            'driver' => 's3',
+            'key' => env('MINIO_ACCESS_KEY_ID'),
+            'secret' => env('MINIO_SECRET_ACCESS_KEY'),
+            'region' => env('MINIO_REGION', 'us-east-1'),
+            'bucket' => env('MINIO_PRIVATE_BUCKET', 'private'),
+            'url' => env('MINIO_URL'),
+            'endpoint' => env('MINIO_ENDPOINT'),
+            'use_path_style_endpoint' => env('MINIO_USE_PATH_STYLE_ENDPOINT', true),
+            'visibility' => 'private',
+            'throw' => true,
+        ],
+
     ],
 
     /*
