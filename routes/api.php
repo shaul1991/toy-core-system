@@ -22,6 +22,7 @@ Route::prefix('timers')->group(function () {
 });
 
 Route::prefix('files')->group(function () {
+    Route::get('/', [FileController::class, 'index']);
     Route::post('/', [FileController::class, 'store']);
     Route::get('{id}', [FileController::class, 'show']);
     Route::get('{id}/download', [FileController::class, 'download']);

@@ -15,6 +15,19 @@ interface FileRepositoryInterface
     public function findById(string $id): ?File;
 
     /**
+     * 파일 목록 조회 (Cursor 기반 페이지네이션)
+     *
+     * @param  array{
+     *     visibility?: string,
+     *     mime_type?: string,
+     *     path_prefix?: string,
+     *     created_from?: string,
+     *     created_to?: string
+     * }  $filters
+     */
+    public function paginate(int $perPage = 15, ?string $cursor = null, array $filters = []): \Illuminate\Contracts\Pagination\CursorPaginator;
+
+    /**
      * ID로 파일 조회 (삭제된 것 포함)
      */
     public function findByIdWithTrashed(string $id): ?File;
