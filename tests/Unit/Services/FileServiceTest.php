@@ -143,6 +143,9 @@ class FileServiceTest extends TestCase
     public function test_download_file_throws_not_found_when_stream_is_null(): void
     {
         $file = $this->createFileMock('test-id');
+        $file->shouldReceive('getAttribute')
+            ->with('full_path')
+            ->andReturn('2025/01/01/test.txt');
 
         $this->fileRepository
             ->shouldReceive('download')

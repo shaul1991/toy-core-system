@@ -65,7 +65,8 @@ class FileService
         $stream = $this->fileRepository->download($file);
 
         if (! $stream) {
-            throw NotFoundException::withMessage('파일 데이터를 찾을 수 없습니다.');
+            throw NotFoundException::withMessage('파일 데이터를 찾을 수 없습니다.')
+                ->withDetails(['file_id' => $file->id, 'path' => $file->full_path]);
         }
 
         return $stream;
@@ -127,7 +128,8 @@ class FileService
         $url = $this->fileRepository->temporaryUrl($file, $expirationMinutes);
 
         if (! $url) {
-            throw NotFoundException::withMessage('파일 데이터를 찾을 수 없습니다.');
+            throw NotFoundException::withMessage('파일 데이터를 찾을 수 없습니다.')
+                ->withDetails(['file_id' => $file->id]);
         }
 
         return $url;

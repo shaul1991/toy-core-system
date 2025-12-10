@@ -206,8 +206,10 @@ class MinioFileRepository implements FileRepositoryInterface
                 throw new \RuntimeException("대상 디스크에 파일을 쓸 수 없습니다: {$fullPath}");
             }
         } catch (\Throwable $e) {
-            // 쓰기 실패 시 대상 파일 정리 시도
-            Storage::disk($toDisk)->delete($fullPath);
+            // 쓰기 실패 시 대상 파일 정리 시도 (존재하는 경우에만)
+            if (Storage::disk($toDisk)->exists($fullPath)) {
+                Storage::disk($toDisk)->delete($fullPath);
+            }
 
             Log::error('디스크 간 파일 이동 실패', [
                 'file_id' => $file->id,
@@ -227,7 +229,16 @@ class MinioFileRepository implements FileRepositoryInterface
         // 원본 파일 삭제
         if (! Storage::disk($fromDisk)->delete($fullPath)) {
             // 원본 삭제 실패 시 대상 파일 롤백
-            Storage::disk($toDisk)->delete($fullPath);
+            $targetDeleted = Storage::disk($toDisk)->delete($fullPath);
+
+            if (! $targetDeleted) {
+                Log::critical('롤백 실패: 양쪽 디스크에 파일 존재', [
+                    'file_id' => $file->id,
+                    'path' => $fullPath,
+                    'from_disk' => $fromDisk,
+                    'to_disk' => $toDisk,
+                ]);
+            }
 
             Log::error('원본 파일 삭제 실패로 롤백', [
                 'file_id' => $file->id,
