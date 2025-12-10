@@ -32,7 +32,7 @@ class FileController extends Controller
             'created_to' => ['sometimes', 'date'],
         ]);
 
-        $perPage = $validated['per_page'] ?? 15;
+        $perPage = (int) ($validated['per_page'] ?? 15);
         $cursor = $validated['cursor'] ?? null;
 
         $filters = array_filter([
@@ -277,7 +277,7 @@ class FileController extends Controller
             'expiration_minutes' => ['sometimes', 'integer', 'min:1', 'max:10080'], // 최대 7일
         ]);
 
-        $expirationMinutes = $validated['expiration_minutes'] ?? 60;
+        $expirationMinutes = (int) ($validated['expiration_minutes'] ?? 60);
 
         $url = $this->fileService->getTemporaryUrl($id, $expirationMinutes);
 
