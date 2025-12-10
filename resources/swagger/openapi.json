@@ -1,0 +1,394 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Toy Domain Service - Timer API",
+    "description": "Timer 도메인은 목표 시점까지의 남은 시간을 관리하는 원자적 도메인 서비스입니다.\n\n## 주요 기능\n- 타이머 생성/조회/수정/삭제 (CRUD + Upsert)\n- 목표 시간(target_at)까지의 남은 초(remaining_seconds) 계산\n- Soft Delete 지원\n\n## remaining_seconds 해석\n- 음수 (-3600): 목표까지 3600초 남음\n- 0: 목표 시점 도달\n- 양수 (+3600): 목표 시점 3600초 경과",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Toy Domain Service"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://dev-core.shaul.link",
+      "description": "Development Server"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local Server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Timer",
+      "description": "타이머 관리 API"
+    }
+  ],
+  "paths": {
+    "/api/timers/{key}": {
+      "get": {
+        "tags": ["Timer"],
+        "summary": "타이머 조회",
+        "description": "지정된 키의 타이머를 조회하고 남은 시간을 계산합니다.",
+        "operationId": "getTimer",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "description": "타이머 고유 식별자",
+            "schema": {
+              "type": "string",
+              "example": "my-timer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "타이머 조회 성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimerShowResponse"
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "key": "my-timer",
+                    "target_at": "2025-12-31T23:59:59+09:00",
+                    "remaining_seconds": -3600
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "타이머를 찾을 수 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "NOT_FOUND",
+                    "message": "Timer를 찾을 수 없습니다: my-timer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": ["Timer"],
+        "summary": "타이머 생성/수정 (Upsert)",
+        "description": "타이머를 생성하거나 기존 타이머를 수정합니다.\n\n**동작 방식:**\n1. 키가 없으면 → 새로 생성\n2. 키가 있으면 → target_at 업데이트\n3. Soft Delete된 타이머 → 복원 후 업데이트",
+        "operationId": "upsertTimer",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "description": "타이머 고유 식별자",
+            "schema": {
+              "type": "string",
+              "example": "my-timer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TimerUpsertRequest"
+              },
+              "example": {
+                "target_at": "2025-12-31T23:59:59+09:00"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "타이머 수정 성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimerUpsertResponse"
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "key": "my-timer",
+                    "target_at": "2025-12-31T23:59:59+09:00"
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "타이머 생성 성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimerUpsertResponse"
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "key": "my-timer",
+                    "target_at": "2025-12-31T23:59:59+09:00"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "유효성 검증 실패",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "VALIDATION_ERROR",
+                    "message": "입력값이 올바르지 않습니다.",
+                    "details": {
+                      "target_at": ["target_at 필드는 필수입니다."]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["Timer"],
+        "summary": "타이머 삭제 (Soft Delete)",
+        "description": "지정된 키의 타이머를 소프트 삭제합니다. 삭제된 타이머는 PUT 요청으로 복원할 수 있습니다.",
+        "operationId": "deleteTimer",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "description": "타이머 고유 식별자",
+            "schema": {
+              "type": "string",
+              "example": "my-timer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "타이머 삭제 성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimerDeleteResponse"
+                },
+                "example": {
+                  "success": true,
+                  "data": {
+                    "key": "my-timer",
+                    "deleted_at": "2025-12-10T12:00:00+09:00"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "타이머를 찾을 수 없음",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "success": false,
+                  "error": {
+                    "code": "NOT_FOUND",
+                    "message": "Timer를 찾을 수 없습니다: my-timer"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TimerShowResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "타이머 고유 식별자",
+                "example": "my-timer"
+              },
+              "target_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "목표 시점 (ISO 8601 형식)",
+                "example": "2025-12-31T23:59:59+09:00"
+              },
+              "remaining_seconds": {
+                "type": "integer",
+                "description": "남은 시간(초). 음수=남은시간, 0=도달, 양수=경과시간",
+                "example": -3600
+              }
+            },
+            "required": ["key", "target_at", "remaining_seconds"]
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "TimerUpsertRequest": {
+        "type": "object",
+        "properties": {
+          "target_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "목표 시점 (ISO 8601 형식 또는 파싱 가능한 날짜 문자열)",
+            "example": "2025-12-31T23:59:59+09:00"
+          }
+        },
+        "required": ["target_at"]
+      },
+      "TimerUpsertResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "타이머 고유 식별자",
+                "example": "my-timer"
+              },
+              "target_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "목표 시점 (ISO 8601 형식)",
+                "example": "2025-12-31T23:59:59+09:00"
+              }
+            },
+            "required": ["key", "target_at"]
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "TimerDeleteResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string",
+                "description": "타이머 고유 식별자",
+                "example": "my-timer"
+              },
+              "deleted_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "삭제 시점 (ISO 8601 형식)",
+                "example": "2025-12-10T12:00:00+09:00"
+              }
+            },
+            "required": ["key", "deleted_at"]
+          }
+        },
+        "required": ["success", "data"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "에러 코드",
+                "example": "NOT_FOUND"
+              },
+              "message": {
+                "type": "string",
+                "description": "에러 메시지",
+                "example": "Timer를 찾을 수 없습니다: my-timer"
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["success", "error"]
+      },
+      "ValidationErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "description": "에러 코드",
+                "example": "VALIDATION_ERROR"
+              },
+              "message": {
+                "type": "string",
+                "description": "에러 메시지",
+                "example": "입력값이 올바르지 않습니다."
+              },
+              "details": {
+                "type": "object",
+                "description": "필드별 에러 상세",
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "example": {
+                  "target_at": ["target_at 필드는 필수입니다."]
+                }
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["success", "error"]
+      }
+    }
+  }
+}
