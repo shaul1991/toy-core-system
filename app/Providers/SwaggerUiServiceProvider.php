@@ -12,8 +12,9 @@ class SwaggerUiServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::define('viewSwaggerUI', function ($user = null) {
-            // SWAGGER_UI_ENABLED 환경변수로 접근 제어 (기본값: true)
-            if (env('SWAGGER_UI_ENABLED', true)) {
+            // SWAGGER_UI_ENABLED 환경변수로 접근 제어 (기본값: false)
+            // .env에서 SWAGGER_UI_ENABLED=true로 설정해야만 Swagger UI에 접근 가능
+            if (env('SWAGGER_UI_ENABLED', false) === true) {
                 return true;
             }
 
