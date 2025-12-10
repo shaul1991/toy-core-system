@@ -27,6 +27,7 @@ return new class extends Migration
             $table->index('disk');
             $table->index('visibility');
             $table->index('mime_type');
+            $table->index('path');
             $table->index('created_at');
         });
     }

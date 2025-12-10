@@ -6,6 +6,7 @@ namespace App\Repositories;
 
 use App\Models\File;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -63,7 +64,7 @@ class MinioFileRepository implements FileRepositoryInterface
      *
      * @return resource|null
      */
-    public function download(File $file)
+    public function download(File $file): mixed
     {
         $fullPath = $file->full_path;
 
@@ -89,11 +90,18 @@ class MinioFileRepository implements FileRepositoryInterface
     {
         $fullPath = $file->full_path;
         $disk = $file->disk;
+        $fileId = $file->id;
 
         $deleted = $file->forceDelete();
 
         if ($deleted) {
-            Storage::disk($disk)->delete($fullPath);
+            if (! Storage::disk($disk)->delete($fullPath)) {
+                Log::warning('스토리지 파일 삭제 실패', [
+                    'file_id' => $fileId,
+                    'path' => $fullPath,
+                    'disk' => $disk,
+                ]);
+            }
         }
 
         return $deleted;

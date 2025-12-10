@@ -60,9 +60,8 @@ class FileService
      *
      * @throws NotFoundException
      */
-    public function downloadFile(string $id)
+    public function downloadFile(File $file): mixed
     {
-        $file = $this->getFile($id);
         $stream = $this->fileRepository->download($file);
 
         if (! $stream) {

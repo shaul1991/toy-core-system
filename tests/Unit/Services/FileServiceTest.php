@@ -128,18 +128,12 @@ class FileServiceTest extends TestCase
         $stream = fopen('php://memory', 'r');
 
         $this->fileRepository
-            ->shouldReceive('findById')
-            ->with('test-id')
-            ->once()
-            ->andReturn($file);
-
-        $this->fileRepository
             ->shouldReceive('download')
             ->with($file)
             ->once()
             ->andReturn($stream);
 
-        $result = $this->fileService->downloadFile('test-id');
+        $result = $this->fileService->downloadFile($file);
 
         $this->assertSame($stream, $result);
 
@@ -151,12 +145,6 @@ class FileServiceTest extends TestCase
         $file = $this->createFileMock('test-id');
 
         $this->fileRepository
-            ->shouldReceive('findById')
-            ->with('test-id')
-            ->once()
-            ->andReturn($file);
-
-        $this->fileRepository
             ->shouldReceive('download')
             ->with($file)
             ->once()
@@ -165,7 +153,7 @@ class FileServiceTest extends TestCase
         $this->expectException(NotFoundException::class);
         $this->expectExceptionMessage('파일 데이터를 찾을 수 없습니다.');
 
-        $this->fileService->downloadFile('test-id');
+        $this->fileService->downloadFile($file);
     }
 
     // ========================================

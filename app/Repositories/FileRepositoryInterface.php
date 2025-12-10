@@ -34,7 +34,7 @@ interface FileRepositoryInterface
      *
      * @return resource|null
      */
-    public function download(File $file);
+    public function download(File $file): mixed;
 
     /**
      * 파일 삭제 (soft delete, 스토리지 파일 유지)

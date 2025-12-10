@@ -53,7 +53,7 @@ class FileController extends Controller
     public function download(string $id): StreamedResponse
     {
         $file = $this->fileService->getFile($id);
-        $stream = $this->fileService->downloadFile($id);
+        $stream = $this->fileService->downloadFile($file);
 
         return response()->streamDownload(
             function () use ($stream) {
@@ -117,14 +117,13 @@ class FileController extends Controller
             'expiration_minutes' => ['sometimes', 'integer', 'min:1', 'max:10080'], // 최대 7일
         ]);
 
-        $url = $this->fileService->getTemporaryUrl(
-            $id,
-            $validated['expiration_minutes'] ?? 60
-        );
+        $expirationMinutes = $validated['expiration_minutes'] ?? 60;
+
+        $url = $this->fileService->getTemporaryUrl($id, $expirationMinutes);
 
         return $this->successResponse([
             'url' => $url,
-            'expires_at' => now()->addMinutes($validated['expiration_minutes'] ?? 60)->toIso8601String(),
+            'expires_at' => now()->addMinutes($expirationMinutes)->toIso8601String(),
         ]);
     }
 
