@@ -12,15 +12,15 @@ class SwaggerUiServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::define('viewSwaggerUI', function ($user = null) {
-            // 로컬 환경에서는 항상 접근 허용
-            if (app()->environment('local', 'testing')) {
-                return true;
+            // 프로덕션 환경에서만 인증 필요
+            if (app()->environment('production')) {
+                return in_array(optional($user)->email, [
+                    //
+                ]);
             }
 
-            // 프로덕션 환경에서는 인증된 사용자의 이메일 확인
-            return in_array(optional($user)->email, [
-                //
-            ]);
+            // 프로덕션이 아닌 환경에서는 항상 접근 허용
+            return true;
         });
     }
 }

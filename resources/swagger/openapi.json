@@ -10,17 +10,12 @@
   },
   "servers": [
     {
-      "url": "{scheme}://{host}",
-      "description": "Dynamic Server",
-      "variables": {
-        "scheme": {
-          "default": "http",
-          "enum": ["http", "https"]
-        },
-        "host": {
-          "default": "localhost:8000"
-        }
-      }
+      "url": "https://dev-core.shaul.link",
+      "description": "Development Server"
+    },
+    {
+      "url": "http://localhost:8000",
+      "description": "Local Server"
     }
   ],
   "tags": [
