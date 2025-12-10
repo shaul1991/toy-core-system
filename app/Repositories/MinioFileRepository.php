@@ -185,17 +185,58 @@ class MinioFileRepository implements FileRepositoryInterface
 
     /**
      * 디스크 간 파일 이동
+     *
+     * @throws \RuntimeException
      */
     private function moveFileBetweenDisks(File $file, string $fromDisk, string $toDisk): void
     {
         $fullPath = $file->full_path;
+        $stream = null;
 
-        $stream = Storage::disk($fromDisk)->readStream($fullPath);
-        Storage::disk($toDisk)->writeStream($fullPath, $stream);
-        Storage::disk($fromDisk)->delete($fullPath);
+        try {
+            $stream = Storage::disk($fromDisk)->readStream($fullPath);
 
-        if (is_resource($stream)) {
-            fclose($stream);
+            if (! $stream) {
+                throw new \RuntimeException("원본 파일을 읽을 수 없습니다: {$fullPath}");
+            }
+
+            $written = Storage::disk($toDisk)->writeStream($fullPath, $stream);
+
+            if (! $written) {
+                throw new \RuntimeException("대상 디스크에 파일을 쓸 수 없습니다: {$fullPath}");
+            }
+        } catch (\Throwable $e) {
+            // 쓰기 실패 시 대상 파일 정리 시도
+            Storage::disk($toDisk)->delete($fullPath);
+
+            Log::error('디스크 간 파일 이동 실패', [
+                'file_id' => $file->id,
+                'path' => $fullPath,
+                'from_disk' => $fromDisk,
+                'to_disk' => $toDisk,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+
+        // 원본 파일 삭제
+        if (! Storage::disk($fromDisk)->delete($fullPath)) {
+            // 원본 삭제 실패 시 대상 파일 롤백
+            Storage::disk($toDisk)->delete($fullPath);
+
+            Log::error('원본 파일 삭제 실패로 롤백', [
+                'file_id' => $file->id,
+                'path' => $fullPath,
+                'from_disk' => $fromDisk,
+                'to_disk' => $toDisk,
+            ]);
+
+            throw new \RuntimeException("원본 파일 삭제에 실패했습니다: {$fullPath}");
         }
     }
 }
