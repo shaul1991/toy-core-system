@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Repositories;
 
 use App\Models\Timer;
+use Illuminate\Support\Carbon;
 
 class EloquentTimerRepository implements TimerRepositoryInterface
 {
@@ -31,7 +32,7 @@ class EloquentTimerRepository implements TimerRepositoryInterface
     {
         return Timer::create([
             'key' => $key,
-            'target_at' => $targetAt,
+            'target_at' => $this->parseToUtc($targetAt),
         ]);
     }
 
@@ -40,10 +41,18 @@ class EloquentTimerRepository implements TimerRepositoryInterface
      */
     public function update(Timer $timer, string $targetAt): Timer
     {
-        $timer->update(['target_at' => $targetAt]);
+        $timer->update(['target_at' => $this->parseToUtc($targetAt)]);
         $timer->refresh();
 
         return $timer;
+    }
+
+    /**
+     * datetime 문자열을 파싱하여 UTC로 변환
+     */
+    private function parseToUtc(string $datetime): Carbon
+    {
+        return Carbon::parse($datetime)->utc();
     }
 
     /**
