@@ -60,13 +60,13 @@ class FileService
      *
      * @throws NotFoundException
      */
-    public function downloadFile(string $id)
+    public function downloadFile(File $file): mixed
     {
-        $file = $this->getFile($id);
         $stream = $this->fileRepository->download($file);
 
         if (! $stream) {
-            throw new NotFoundException('파일 데이터를 찾을 수 없습니다.');
+            throw NotFoundException::withMessage('파일 데이터를 찾을 수 없습니다.')
+                ->withDetails(['file_id' => $file->id, 'path' => $file->full_path]);
         }
 
         return $stream;
@@ -128,7 +128,8 @@ class FileService
         $url = $this->fileRepository->temporaryUrl($file, $expirationMinutes);
 
         if (! $url) {
-            throw new NotFoundException('파일 데이터를 찾을 수 없습니다.');
+            throw NotFoundException::withMessage('파일 데이터를 찾을 수 없습니다.')
+                ->withDetails(['file_id' => $file->id]);
         }
 
         return $url;
@@ -156,7 +157,7 @@ class FileService
     private function validateVisibility(string $visibility): void
     {
         if (! in_array($visibility, ['public', 'private'], true)) {
-            throw new BadRequestException("유효하지 않은 visibility 값입니다: {$visibility}");
+            throw BadRequestException::invalidValue('visibility', $visibility);
         }
     }
 }

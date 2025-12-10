@@ -6,6 +6,7 @@ namespace App\Repositories;
 
 use App\Models\File;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
@@ -63,7 +64,7 @@ class MinioFileRepository implements FileRepositoryInterface
      *
      * @return resource|null
      */
-    public function download(File $file)
+    public function download(File $file): mixed
     {
         $fullPath = $file->full_path;
 
@@ -89,11 +90,18 @@ class MinioFileRepository implements FileRepositoryInterface
     {
         $fullPath = $file->full_path;
         $disk = $file->disk;
+        $fileId = $file->id;
 
         $deleted = $file->forceDelete();
 
         if ($deleted) {
-            Storage::disk($disk)->delete($fullPath);
+            if (! Storage::disk($disk)->delete($fullPath)) {
+                Log::warning('스토리지 파일 삭제 실패', [
+                    'file_id' => $fileId,
+                    'path' => $fullPath,
+                    'disk' => $disk,
+                ]);
+            }
         }
 
         return $deleted;
@@ -177,17 +185,69 @@ class MinioFileRepository implements FileRepositoryInterface
 
     /**
      * 디스크 간 파일 이동
+     *
+     * @throws \RuntimeException
      */
     private function moveFileBetweenDisks(File $file, string $fromDisk, string $toDisk): void
     {
         $fullPath = $file->full_path;
+        $stream = null;
 
-        $stream = Storage::disk($fromDisk)->readStream($fullPath);
-        Storage::disk($toDisk)->writeStream($fullPath, $stream);
-        Storage::disk($fromDisk)->delete($fullPath);
+        try {
+            $stream = Storage::disk($fromDisk)->readStream($fullPath);
 
-        if (is_resource($stream)) {
-            fclose($stream);
+            if (! $stream) {
+                throw new \RuntimeException("원본 파일을 읽을 수 없습니다: {$fullPath}");
+            }
+
+            $written = Storage::disk($toDisk)->writeStream($fullPath, $stream);
+
+            if (! $written) {
+                throw new \RuntimeException("대상 디스크에 파일을 쓸 수 없습니다: {$fullPath}");
+            }
+        } catch (\Throwable $e) {
+            // 쓰기 실패 시 대상 파일 정리 시도 (존재하는 경우에만)
+            if (Storage::disk($toDisk)->exists($fullPath)) {
+                Storage::disk($toDisk)->delete($fullPath);
+            }
+
+            Log::error('디스크 간 파일 이동 실패', [
+                'file_id' => $file->id,
+                'path' => $fullPath,
+                'from_disk' => $fromDisk,
+                'to_disk' => $toDisk,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw $e;
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+
+        // 원본 파일 삭제
+        if (! Storage::disk($fromDisk)->delete($fullPath)) {
+            // 원본 삭제 실패 시 대상 파일 롤백
+            $targetDeleted = Storage::disk($toDisk)->delete($fullPath);
+
+            if (! $targetDeleted) {
+                Log::critical('롤백 실패: 양쪽 디스크에 파일 존재', [
+                    'file_id' => $file->id,
+                    'path' => $fullPath,
+                    'from_disk' => $fromDisk,
+                    'to_disk' => $toDisk,
+                ]);
+            }
+
+            Log::error('원본 파일 삭제 실패로 롤백', [
+                'file_id' => $file->id,
+                'path' => $fullPath,
+                'from_disk' => $fromDisk,
+                'to_disk' => $toDisk,
+            ]);
+
+            throw new \RuntimeException("원본 파일 삭제에 실패했습니다: {$fullPath}");
         }
     }
 }

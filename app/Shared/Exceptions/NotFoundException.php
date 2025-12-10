@@ -35,4 +35,12 @@ class NotFoundException extends DomainException
 
         return new static("{$resourceType}(을)를 찾을 수 없습니다: [{$criteriaString}]");
     }
+
+    /**
+     * 메시지로 예외 생성
+     */
+    public static function withMessage(string $message): static
+    {
+        return new static($message);
+    }
 }

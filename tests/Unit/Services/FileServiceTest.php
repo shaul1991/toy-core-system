@@ -128,18 +128,12 @@ class FileServiceTest extends TestCase
         $stream = fopen('php://memory', 'r');
 
         $this->fileRepository
-            ->shouldReceive('findById')
-            ->with('test-id')
-            ->once()
-            ->andReturn($file);
-
-        $this->fileRepository
             ->shouldReceive('download')
             ->with($file)
             ->once()
             ->andReturn($stream);
 
-        $result = $this->fileService->downloadFile('test-id');
+        $result = $this->fileService->downloadFile($file);
 
         $this->assertSame($stream, $result);
 
@@ -149,12 +143,9 @@ class FileServiceTest extends TestCase
     public function test_download_file_throws_not_found_when_stream_is_null(): void
     {
         $file = $this->createFileMock('test-id');
-
-        $this->fileRepository
-            ->shouldReceive('findById')
-            ->with('test-id')
-            ->once()
-            ->andReturn($file);
+        $file->shouldReceive('getAttribute')
+            ->with('full_path')
+            ->andReturn('2025/01/01/test.txt');
 
         $this->fileRepository
             ->shouldReceive('download')
@@ -165,7 +156,7 @@ class FileServiceTest extends TestCase
         $this->expectException(NotFoundException::class);
         $this->expectExceptionMessage('파일 데이터를 찾을 수 없습니다.');
 
-        $this->fileService->downloadFile('test-id');
+        $this->fileService->downloadFile($file);
     }
 
     // ========================================

@@ -226,7 +226,7 @@ class FileControllerTest extends TestCase
         $response = $this->get("/api/files/{$file->id}/download");
 
         $response->assertStatus(200)
-            ->assertHeader('Content-Type', 'text/plain; charset=UTF-8')
+            ->assertHeader('Content-Type', 'text/plain')
             ->assertHeader('Content-Disposition', 'attachment; filename=hello.txt');
     }
 
