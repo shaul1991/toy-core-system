@@ -3,6 +3,12 @@
 use Wotz\SwaggerUi\Http\Middleware\EnsureUserIsAuthorized;
 
 return [
+    /*
+     * Enable or disable Swagger UI (default: false)
+     * Set SWAGGER_UI_ENABLED=true in .env to enable
+     */
+    'enabled' => env('SWAGGER_UI_ENABLED', false),
+
     'files' => [
         [
             /*
