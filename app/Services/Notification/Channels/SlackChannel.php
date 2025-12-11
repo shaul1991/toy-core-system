@@ -6,8 +6,10 @@ namespace App\Services\Notification\Channels;
 
 use App\Enums\Notification\ChannelType;
 use App\Models\NotificationQueue;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 class SlackChannel implements NotificationChannelInterface
@@ -227,16 +229,28 @@ class SlackChannel implements NotificationChannelInterface
             return;
         }
 
-        $response = Http::post($webhookUrl, $message);
+        $timeout = $this->config['timeout'] ?? config('notification.channels.slack.timeout', 5);
 
-        if (! $response->successful()) {
-            throw new \RuntimeException('Slack webhook 호출 실패: '.$response->body());
+        try {
+            $response = Http::timeout($timeout)->post($webhookUrl, $message);
+
+            if (! $response->successful()) {
+                throw new RuntimeException(
+                    "Slack webhook 호출 실패: status={$response->status()}, body={$response->body()}"
+                );
+            }
+
+            Log::info('Slack notification sent', [
+                'queue_id' => $queueId,
+                'webhook_url' => $this->maskWebhookUrl($webhookUrl),
+            ]);
+        } catch (ConnectionException $e) {
+            throw new RuntimeException(
+                "Slack webhook 연결 실패: {$e->getMessage()} (timeout={$timeout}s)",
+                0,
+                $e
+            );
         }
-
-        Log::info('Slack notification sent', [
-            'queue_id' => $queueId,
-            'webhook_url' => $this->maskWebhookUrl($webhookUrl),
-        ]);
     }
 
     private function maskWebhookUrl(string $webhookUrl): string

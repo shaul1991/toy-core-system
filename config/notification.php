@@ -55,6 +55,7 @@ return [
         'slack' => [
             'enabled' => env('NOTIFICATION_SLACK_ENABLED', true),
             'provider' => env('NOTIFICATION_SLACK_PROVIDER', 'webhook'), // log, webhook
+            'timeout' => env('NOTIFICATION_SLACK_TIMEOUT', 5), // HTTP 요청 타임아웃 (초)
         ],
     ],
 
