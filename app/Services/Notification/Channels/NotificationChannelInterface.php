@@ -13,6 +13,9 @@ interface NotificationChannelInterface
 
     public function send(NotificationQueue $queue): ChannelResult;
 
+    /**
+     * @param  NotificationQueue[]  $queues
+     */
     public function sendBatch(array $queues, array $aggregatedPayload): ChannelResult;
 
     public function validateRecipient(array $recipient): bool;

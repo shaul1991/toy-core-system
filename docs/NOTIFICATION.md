@@ -30,7 +30,7 @@ Notification 도메인은 다채널(Email, SMS, Slack) 알림 발송을 담당�
 
 ### 전체 흐름
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────┐
 │                          API Layer                               │
 │                    NotificationController                        │
@@ -69,7 +69,7 @@ Notification 도메인은 다채널(Email, SMS, Slack) 알림 발송을 담당�
 
 ### 파일 구조
 
-```
+```text
 app/
 ├── Enums/Notification/
 │   ├── DispatchType.php              # 발송 유형 Enum
@@ -179,11 +179,11 @@ CREATE INDEX idx_nl_sent_at ON notification_logs(sent_at);
 
 ### 알림 발송 등록
 
-```
+```http
 POST /api/notifications
 ```
 
-**요청 - 즉시 발송**
+#### 요청 - 즉시 발송
 ```json
 {
     "dispatch_type": "immediate",
@@ -199,7 +199,8 @@ POST /api/notifications
 }
 ```
 
-**요청 - 예약 발송**
+#### 요청 - 예약 발송
+
 ```json
 {
     "dispatch_type": "scheduled",
@@ -217,7 +218,8 @@ POST /api/notifications
 }
 ```
 
-**요청 - 묶음 발송**
+#### 요청 - 묶음 발송
+
 ```json
 {
     "dispatch_type": "batched",
@@ -237,7 +239,8 @@ POST /api/notifications
 }
 ```
 
-**응답 (201 Created)**
+#### 응답 (201 Created)
+
 ```json
 {
     "success": true,
@@ -254,11 +257,11 @@ POST /api/notifications
 
 ### 대기열 목록 조회
 
-```
+```http
 GET /api/notifications/queue
 ```
 
-**쿼리 파라미터**
+#### 쿼리 파라미터
 | 파라미터 | 타입 | 필수 | 설명 |
 |----------|------|------|------|
 | `dispatch_type` | string | X | 발송 유형 필터 |
@@ -268,13 +271,13 @@ GET /api/notifications/queue
 
 ### 대기열 상세 조회
 
-```
+```http
 GET /api/notifications/queue/{id}
 ```
 
 ### 대기열 취소
 
-```
+```http
 DELETE /api/notifications/queue/{id}
 ```
 
@@ -282,7 +285,7 @@ DELETE /api/notifications/queue/{id}
 
 ### 실패한 알림 재시도
 
-```
+```http
 POST /api/notifications/queue/{id}/retry
 ```
 
@@ -291,11 +294,11 @@ POST /api/notifications/queue/{id}/retry
 
 ### 발송 로그 목록 조회
 
-```
+```http
 GET /api/notifications/logs
 ```
 
-**쿼리 파라미터**
+#### 쿼리 파라미터
 | 파라미터 | 타입 | 필수 | 설명 |
 |----------|------|------|------|
 | `status` | string | X | 상태 필터 (sent, partial, failed) |
@@ -306,17 +309,17 @@ GET /api/notifications/logs
 
 ### 발송 로그 상세 조회
 
-```
+```http
 GET /api/notifications/logs/{id}
 ```
 
 ### 채널 목록 조회
 
-```
+```http
 GET /api/notifications/channels
 ```
 
-**응답**
+#### 응답
 ```json
 {
     "success": true,

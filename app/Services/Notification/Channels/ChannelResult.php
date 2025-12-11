@@ -4,11 +4,13 @@ declare(strict_types=1);
 
 namespace App\Services\Notification\Channels;
 
+use App\Enums\Notification\ChannelResultStatus;
+
 final readonly class ChannelResult
 {
     private function __construct(
         public string $channel,
-        public string $status,
+        public ChannelResultStatus $status,
         public ?string $messageId = null,
         public ?string $error = null,
         public array $metadata = [],
@@ -18,7 +20,7 @@ final readonly class ChannelResult
     {
         return new self(
             channel: $channel,
-            status: 'sent',
+            status: ChannelResultStatus::SENT,
             messageId: $messageId,
             metadata: $metadata,
         );
@@ -28,7 +30,7 @@ final readonly class ChannelResult
     {
         return new self(
             channel: $channel,
-            status: 'failed',
+            status: ChannelResultStatus::FAILED,
             error: $error,
             metadata: $metadata,
         );
@@ -36,19 +38,19 @@ final readonly class ChannelResult
 
     public function isSuccess(): bool
     {
-        return $this->status === 'sent';
+        return $this->status->isSuccess();
     }
 
     public function isFailure(): bool
     {
-        return $this->status === 'failed';
+        return $this->status->isFailure();
     }
 
     public function toArray(): array
     {
         $result = [
             'channel' => $this->channel,
-            'status' => $this->status,
+            'status' => $this->status->value,
         ];
 
         if ($this->messageId !== null) {
