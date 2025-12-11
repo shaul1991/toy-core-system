@@ -13,6 +13,9 @@ return [
     // 기본 큐 이름
     'queue' => env('NOTIFICATION_QUEUE', 'notifications'),
 
+    // 로그 모드 강제 사용 (production이 아니면 자동으로 true)
+    'force_log_mode' => env('NOTIFICATION_FORCE_LOG_MODE', env('APP_ENV') !== 'production'),
+
     /*
     |--------------------------------------------------------------------------
     | 묶음 발송 설정

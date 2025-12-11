@@ -37,12 +37,7 @@ class SlackChannel implements NotificationChannelInterface
             $webhookUrl = $recipient['slack_webhook'];
             $message = $this->formatMessage($queue->type, $payload);
 
-            $this->sendToSlack($webhookUrl, $message);
-
-            Log::info('Slack notification sent', [
-                'queue_id' => $queue->id,
-                'type' => $queue->type,
-            ]);
+            $this->sendToSlack($webhookUrl, $message, $queue->id);
 
             return ChannelResult::success(
                 channel: 'slack',
@@ -84,14 +79,9 @@ class SlackChannel implements NotificationChannelInterface
 
             $webhookUrl = $recipient['slack_webhook'];
             $message = $this->formatBatchMessage($firstQueue->type, $aggregatedPayload, count($queues));
+            $queueIds = array_map(fn ($q) => $q->id, $queues);
 
-            $this->sendToSlack($webhookUrl, $message);
-
-            Log::info('Slack batch notification sent', [
-                'queue_ids' => array_column($queues, 'id'),
-                'type' => $firstQueue->type,
-                'count' => count($queues),
-            ]);
+            $this->sendToSlack($webhookUrl, $message, $queueIds);
 
             return ChannelResult::success(
                 channel: 'slack',
@@ -103,7 +93,7 @@ class SlackChannel implements NotificationChannelInterface
             );
         } catch (Throwable $e) {
             Log::error('Slack batch notification failed', [
-                'queue_ids' => array_column($queues, 'id'),
+                'queue_ids' => array_map(fn ($q) => $q->id, $queues),
                 'error' => $e->getMessage(),
             ]);
 
@@ -121,6 +111,17 @@ class SlackChannel implements NotificationChannelInterface
         }
 
         return str_starts_with($recipient['slack_webhook'], 'https://hooks.slack.com/');
+    }
+
+    private function isLogMode(): bool
+    {
+        if (config('notification.force_log_mode', false)) {
+            return true;
+        }
+
+        $provider = $this->config['provider'] ?? 'webhook';
+
+        return $provider === 'log';
     }
 
     private function formatMessage(string $type, array $payload): array
@@ -201,20 +202,27 @@ class SlackChannel implements NotificationChannelInterface
     private function getDefaultTitle(string $type): string
     {
         return match ($type) {
-            'welcome' => '🎉 환영합니다',
-            'order_complete' => '📦 주문 완료',
-            'activity_digest' => '📊 활동 요약',
-            'error_alert' => '🚨 오류 알림',
-            default => '📢 알림',
+            'welcome' => '환영합니다',
+            'order_complete' => '주문 완료',
+            'activity_digest' => '활동 요약',
+            'error_alert' => '오류 알림',
+            default => '알림',
         };
     }
 
-    private function sendToSlack(string $webhookUrl, array $message): void
+    private function sendToSlack(string $webhookUrl, array $message, int|array $queueId): void
     {
-        $provider = $this->config['provider'] ?? 'webhook';
+        if ($this->isLogMode()) {
+            $logContext = [
+                'mode' => 'LOG_MODE',
+                'channel' => 'slack',
+                'queue_id' => $queueId,
+                'webhook_url' => $this->maskWebhookUrl($webhookUrl),
+                'message' => $message,
+                'would_send' => true,
+            ];
 
-        if ($provider === 'log') {
-            Log::info('Slack (log mode)', ['message' => $message]);
+            Log::channel('stack')->info('[NOTIFICATION:SLACK] 발송 시뮬레이션 (LOG MODE)', $logContext);
 
             return;
         }
@@ -224,5 +232,25 @@ class SlackChannel implements NotificationChannelInterface
         if (! $response->successful()) {
             throw new \RuntimeException('Slack webhook 호출 실패: '.$response->body());
         }
+
+        Log::info('Slack notification sent', [
+            'queue_id' => $queueId,
+            'webhook_url' => $this->maskWebhookUrl($webhookUrl),
+        ]);
+    }
+
+    private function maskWebhookUrl(string $webhookUrl): string
+    {
+        // Slack webhook URL을 마스킹하여 민감 정보 보호
+        // 예: .../services/T00.../B00.../XXXX...
+        if (preg_match('#^(https://hooks\.slack\.com/services/)([^/]+)/([^/]+)/(.+)$#', $webhookUrl, $matches)) {
+            $t = substr($matches[2], 0, 3).'...';
+            $b = substr($matches[3], 0, 3).'...';
+            $x = substr($matches[4], 0, 4).'...';
+
+            return $matches[1].$t.'/'.$b.'/'.$x;
+        }
+
+        return substr($webhookUrl, 0, 40).'...';
     }
 }

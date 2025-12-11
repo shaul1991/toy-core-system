@@ -41,13 +41,7 @@ class SmsChannel implements NotificationChannelInterface
                 $message = mb_substr($message, 0, 87).'...';
             }
 
-            $messageId = $this->sendSms($phone, $message);
-
-            Log::info('SMS notification sent', [
-                'queue_id' => $queue->id,
-                'phone' => $this->maskPhone($phone),
-                'message_id' => $messageId,
-            ]);
+            $messageId = $this->sendSms($phone, $message, $queue->id);
 
             return ChannelResult::success(
                 channel: 'sms',
@@ -99,13 +93,8 @@ class SmsChannel implements NotificationChannelInterface
                 $message = mb_substr($message, 0, 87).'...';
             }
 
-            $messageId = $this->sendSms($phone, $message);
-
-            Log::info('SMS batch notification sent', [
-                'queue_ids' => array_column($queues, 'id'),
-                'phone' => $this->maskPhone($phone),
-                'message_id' => $messageId,
-            ]);
+            $queueIds = array_map(fn ($q) => $q->id, $queues);
+            $messageId = $this->sendSms($phone, $message, $queueIds);
 
             return ChannelResult::success(
                 channel: 'sms',
@@ -117,7 +106,7 @@ class SmsChannel implements NotificationChannelInterface
             );
         } catch (Throwable $e) {
             Log::error('SMS batch notification failed', [
-                'queue_ids' => array_column($queues, 'id'),
+                'queue_ids' => array_map(fn ($q) => $q->id, $queues),
                 'error' => $e->getMessage(),
             ]);
 
@@ -137,6 +126,17 @@ class SmsChannel implements NotificationChannelInterface
         $phone = preg_replace('/[^0-9+]/', '', $recipient['phone']);
 
         return strlen($phone) >= 10;
+    }
+
+    private function isLogMode(): bool
+    {
+        if (config('notification.force_log_mode', false)) {
+            return true;
+        }
+
+        $provider = $this->config['provider'] ?? 'log';
+
+        return $provider === 'log';
     }
 
     private function normalizePhone(string $phone): string
@@ -159,12 +159,21 @@ class SmsChannel implements NotificationChannelInterface
         return substr($phone, 0, -4).'****';
     }
 
-    private function sendSms(string $phone, string $message): string
+    private function sendSms(string $phone, string $message, int|array $queueId): string
     {
-        $provider = $this->config['provider'] ?? 'log';
+        if ($this->isLogMode()) {
+            $logContext = [
+                'mode' => 'LOG_MODE',
+                'channel' => 'sms',
+                'queue_id' => $queueId,
+                'phone' => $phone,
+                'phone_masked' => $this->maskPhone($phone),
+                'message' => $message,
+                'message_length' => mb_strlen($message),
+                'would_send' => true,
+            ];
 
-        if ($provider === 'log') {
-            Log::info('SMS (log mode)', ['phone' => $phone, 'message' => $message]);
+            Log::channel('stack')->info('[NOTIFICATION:SMS] 발송 시뮬레이션 (LOG MODE)', $logContext);
 
             return 'sms_log_'.uniqid();
         }
@@ -173,7 +182,9 @@ class SmsChannel implements NotificationChannelInterface
         $apiKey = $this->config['api_key'] ?? '';
 
         if (empty($apiUrl) || empty($apiKey)) {
-            Log::warning('SMS provider not configured, using log mode');
+            Log::warning('SMS provider not configured, using log mode', [
+                'queue_id' => $queueId,
+            ]);
 
             return 'sms_log_'.uniqid();
         }
@@ -189,6 +200,11 @@ class SmsChannel implements NotificationChannelInterface
         if (! $response->successful()) {
             throw new \RuntimeException('SMS API 호출 실패: '.$response->body());
         }
+
+        Log::info('SMS notification sent', [
+            'queue_id' => $queueId,
+            'phone' => $this->maskPhone($phone),
+        ]);
 
         return $response->json('message_id', 'sms_'.uniqid());
     }

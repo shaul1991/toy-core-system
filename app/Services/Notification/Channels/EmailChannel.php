@@ -38,14 +38,7 @@ class EmailChannel implements NotificationChannelInterface
             $subject = $payload['subject'] ?? $this->getDefaultSubject($queue->type);
             $body = $payload['body'] ?? $payload['message'] ?? '';
 
-            $messageId = $this->sendEmail($to, $subject, $body, $payload);
-
-            Log::info('Email notification sent', [
-                'queue_id' => $queue->id,
-                'to' => $to,
-                'subject' => $subject,
-                'message_id' => $messageId,
-            ]);
+            $messageId = $this->sendEmail($to, $subject, $body, $payload, $queue->id);
 
             return ChannelResult::success(
                 channel: 'email',
@@ -88,15 +81,9 @@ class EmailChannel implements NotificationChannelInterface
             $to = $recipient['email'];
             $subject = $aggregatedPayload['subject'] ?? $this->getDefaultSubject($firstQueue->type).' (묶음)';
             $body = $this->formatBatchBody($aggregatedPayload);
+            $queueIds = array_map(fn ($q) => $q->id, $queues);
 
-            $messageId = $this->sendEmail($to, $subject, $body, $aggregatedPayload);
-
-            Log::info('Email batch notification sent', [
-                'queue_ids' => array_column($queues, 'id'),
-                'to' => $to,
-                'subject' => $subject,
-                'message_id' => $messageId,
-            ]);
+            $messageId = $this->sendEmail($to, $subject, $body, $aggregatedPayload, $queueIds);
 
             return ChannelResult::success(
                 channel: 'email',
@@ -109,7 +96,7 @@ class EmailChannel implements NotificationChannelInterface
             );
         } catch (Throwable $e) {
             Log::error('Email batch notification failed', [
-                'queue_ids' => array_column($queues, 'id'),
+                'queue_ids' => array_map(fn ($q) => $q->id, $queues),
                 'error' => $e->getMessage(),
             ]);
 
@@ -126,16 +113,45 @@ class EmailChannel implements NotificationChannelInterface
             && filter_var($recipient['email'], FILTER_VALIDATE_EMAIL) !== false;
     }
 
-    private function sendEmail(string $to, string $subject, string $body, array $payload): string
+    private function isLogMode(): bool
+    {
+        return config('notification.force_log_mode', false);
+    }
+
+    private function sendEmail(string $to, string $subject, string $body, array $payload, int|array $queueId): string
     {
         $from = $this->config['from'] ?? config('mail.from.address', 'noreply@example.com');
         $fromName = $this->config['from_name'] ?? config('mail.from.name', 'Notification');
+
+        if ($this->isLogMode()) {
+            $logContext = [
+                'mode' => 'LOG_MODE',
+                'channel' => 'email',
+                'queue_id' => $queueId,
+                'from' => "{$fromName} <{$from}>",
+                'to' => $to,
+                'subject' => $subject,
+                'body' => $body,
+                'payload' => $payload,
+                'would_send' => true,
+            ];
+
+            Log::channel('stack')->info('[NOTIFICATION:EMAIL] 발송 시뮬레이션 (LOG MODE)', $logContext);
+
+            return 'email_log_'.uniqid();
+        }
 
         Mail::raw($body, function ($message) use ($to, $subject, $from, $fromName) {
             $message->to($to)
                 ->from($from, $fromName)
                 ->subject($subject);
         });
+
+        Log::info('Email notification sent', [
+            'queue_id' => $queueId,
+            'to' => $to,
+            'subject' => $subject,
+        ]);
 
         return 'mail_'.uniqid();
     }
