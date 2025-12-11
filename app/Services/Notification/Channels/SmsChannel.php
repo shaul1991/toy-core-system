@@ -145,7 +145,8 @@ class SmsChannel implements NotificationChannelInterface
     {
         $phone = preg_replace('/[^0-9+]/', '', $phone);
 
-        if (str_starts_with($phone, '010')) {
+        // 한국 휴대폰 번호 (010, 011, 016, 017, 018, 019) → +82 형식으로 변환
+        if (preg_match('/^01[0-9]/', $phone)) {
             $phone = '+82'.substr($phone, 1);
         }
 

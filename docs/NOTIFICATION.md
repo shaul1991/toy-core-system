@@ -262,6 +262,7 @@ GET /api/notifications/queue
 ```
 
 #### 쿼리 파라미터
+
 | 파라미터 | 타입 | 필수 | 설명 |
 |----------|------|------|------|
 | `dispatch_type` | string | X | 발송 유형 필터 |
@@ -299,6 +300,7 @@ GET /api/notifications/logs
 ```
 
 #### 쿼리 파라미터
+
 | 파라미터 | 타입 | 필수 | 설명 |
 |----------|------|------|------|
 | `status` | string | X | 상태 필터 (sent, partial, failed) |

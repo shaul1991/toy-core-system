@@ -178,7 +178,7 @@ class SlackChannel implements NotificationChannelInterface
         if (isset($aggregatedPayload['items'])) {
             $itemTexts = [];
             foreach (array_slice($aggregatedPayload['items'], 0, 10) as $item) {
-                $itemTexts[] = '• '.($item['message'] ?? json_encode($item));
+                $itemTexts[] = '• '.($item['message'] ?? $item['title'] ?? $item['subject'] ?? '(항목)');
             }
 
             if (count($aggregatedPayload['items']) > 10) {

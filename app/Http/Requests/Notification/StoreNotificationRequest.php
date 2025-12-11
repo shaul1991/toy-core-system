@@ -45,7 +45,7 @@ class StoreNotificationRequest extends FormRequest
             'channels.*' => ['required', 'string', Rule::enum(ChannelType::class)],
             'recipient' => ['required', 'array'],
             'recipient.email' => ['nullable', 'email'],
-            'recipient.phone' => ['nullable', 'string'],
+            'recipient.phone' => ['nullable', 'string', 'regex:/^(\+?[0-9]{1,4})?[0-9\-\s]{8,15}$/'],
             'recipient.slack_webhook' => ['nullable', 'url', 'starts_with:https://hooks.slack.com/'],
             'payload' => ['required', 'array'],
             'scheduled_at' => ['nullable', 'date', 'after:now', 'required_if:dispatch_type,scheduled'],
@@ -66,6 +66,7 @@ class StoreNotificationRequest extends FormRequest
             'channels.*.enum' => '유효한 채널이 아닙니다. (email, sms, slack)',
             'recipient.required' => '수신자 정보는 필수입니다.',
             'recipient.email.email' => '유효한 이메일 주소를 입력해주세요.',
+            'recipient.phone.regex' => '유효한 전화번호 형식이 아닙니다.',
             'recipient.slack_webhook.url' => '유효한 Slack webhook URL을 입력해주세요.',
             'recipient.slack_webhook.starts_with' => 'Slack webhook URL은 https://hooks.slack.com/으로 시작해야 합니다.',
             'payload.required' => '알림 데이터는 필수입니다.',
@@ -82,8 +83,11 @@ class StoreNotificationRequest extends FormRequest
         return DispatchType::from($this->validated('dispatch_type'));
     }
 
+    /**
+     * @return ChannelType[]
+     */
     public function getChannels(): array
     {
-        return $this->validated('channels');
+        return ChannelType::fromValues($this->validated('channels'));
     }
 }
