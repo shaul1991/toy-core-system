@@ -93,6 +93,47 @@ class SocialAuthServiceTest extends TestCase
         ]);
     }
 
+    public function test_handle_callback_generates_temporary_email_when_null(): void
+    {
+        // Mock Socialite - 이메일이 null인 경우 (예: Kakao)
+        $mockSocialiteUser = $this->createMockSocialiteUser([
+            'id' => '88888',
+            'email' => null,
+            'name' => 'Kakao User',
+            'avatar' => 'https://example.com/kakao-avatar.jpg',
+        ]);
+
+        Socialite::shouldReceive('driver')
+            ->with('kakao')
+            ->andReturnSelf();
+        Socialite::shouldReceive('stateless')
+            ->andReturnSelf();
+        Socialite::shouldReceive('user')
+            ->andReturn($mockSocialiteUser);
+
+        // Mock: Refresh Token 저장
+        $this->mockRepository
+            ->shouldReceive('store')
+            ->once();
+
+        $result = $this->socialAuthService->handleCallback('kakao');
+
+        $this->assertInstanceOf(TokenDTO::class, $result);
+
+        // 임시 이메일이 생성되었는지 확인
+        $this->assertDatabaseHas('users', [
+            'email' => 'kakao_88888@noemail.local',
+            'name' => 'Kakao User',
+        ]);
+
+        // 소셜 계정이 연동되었는지 확인 (provider_email은 null)
+        $this->assertDatabaseHas('social_accounts', [
+            'provider' => 'kakao',
+            'provider_user_id' => '88888',
+            'provider_email' => null,
+        ]);
+    }
+
     public function test_handle_callback_links_to_existing_user_by_email(): void
     {
         // 기존 사용자 생성

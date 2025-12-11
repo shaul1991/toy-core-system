@@ -184,12 +184,17 @@ final class SocialAuthService
 
     /**
      * 소셜 정보로 새 사용자 생성
+     *
+     * 일부 소셜 제공자(예: Kakao)는 이메일을 필수로 제공하지 않을 수 있습니다.
+     * 이 경우 임시 이메일({provider}_{providerUserId}@noemail.local)을 생성합니다.
      */
     private function createUserFromSocial(SocialUserDTO $dto): User
     {
+        $email = $dto->email ?? "{$dto->provider}_{$dto->providerUserId}@noemail.local";
+
         return User::create([
             'name' => $dto->name ?? 'User',
-            'email' => $dto->email,
+            'email' => $email,
             'avatar' => $dto->avatar,
             'password' => null, // 소셜 전용 계정
             'token_version' => 1,
