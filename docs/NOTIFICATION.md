@@ -74,7 +74,8 @@ app/
 ├── Enums/Notification/
 │   ├── DispatchType.php              # 발송 유형 Enum
 │   ├── NotificationStatus.php        # 알림 상태 Enum
-│   └── ChannelType.php               # 채널 유형 Enum
+│   ├── ChannelType.php               # 채널 유형 Enum
+│   └── ChannelResultStatus.php       # 채널 발송 결과 상태 Enum
 ├── Models/
 │   ├── NotificationQueue.php         # 대기열 모델
 │   └── NotificationLog.php           # 발송 이력 모델
@@ -91,11 +92,11 @@ app/
 │       ├── EmailChannel.php
 │       ├── SmsChannel.php
 │       └── SlackChannel.php
-├── Repositories/
-│   ├── NotificationQueueRepositoryInterface.php
-│   ├── EloquentNotificationQueueRepository.php
-│   ├── NotificationLogRepositoryInterface.php
-│   └── EloquentNotificationLogRepository.php
+├── Repositories/                     # Repository 패턴 구현
+│   ├── NotificationQueueRepositoryInterface.php   # Queue Repository 인터페이스
+│   ├── EloquentNotificationQueueRepository.php    # Queue Repository 구현
+│   ├── NotificationLogRepositoryInterface.php     # Log Repository 인터페이스
+│   └── EloquentNotificationLogRepository.php      # Log Repository 구현
 ├── Jobs/
 │   ├── DispatchNotificationJob.php
 │   └── ProcessBatchedNotificationsJob.php
@@ -167,6 +168,7 @@ CREATE INDEX idx_nq_dispatch_type_status ON notification_queues(dispatch_type, s
 CREATE INDEX idx_nq_scheduled_at ON notification_queues(scheduled_at);
 CREATE INDEX idx_nq_batch_key ON notification_queues(batch_key);
 CREATE INDEX idx_nq_priority ON notification_queues(priority DESC, created_at ASC);
+CREATE INDEX idx_nq_type ON notification_queues(type);
 
 -- notification_logs
 CREATE INDEX idx_nl_queue_id ON notification_logs(queue_id);
@@ -453,26 +455,46 @@ return [
     // 최대 재시도 횟수
     'max_retries' => env('NOTIFICATION_MAX_RETRIES', 3),
 
+    // 기본 큐 이름
+    'queue' => env('NOTIFICATION_QUEUE', 'notifications'),
+
+    // 로그 모드 강제 사용 (production이 아니면 자동으로 true)
+    'force_log_mode' => env('NOTIFICATION_FORCE_LOG_MODE', env('APP_ENV') !== 'production'),
+
     // 묶음 발송 설정
     'batch' => [
         'default_window' => env('NOTIFICATION_BATCH_DEFAULT_WINDOW', 3600),
+        'min_window' => 60,       // 최소 묶음 간격 (초)
+        'max_window' => 86400,    // 최대 묶음 간격 (초)
     ],
 
     // 채널 설정
     'channels' => [
         'email' => [
             'enabled' => env('NOTIFICATION_EMAIL_ENABLED', true),
-            'from' => env('MAIL_FROM_ADDRESS'),
+            'from' => env('MAIL_FROM_ADDRESS', 'noreply@example.com'),
+            'from_name' => env('MAIL_FROM_NAME', 'Notification'),
         ],
         'sms' => [
             'enabled' => env('NOTIFICATION_SMS_ENABLED', true),
-            'provider' => env('NOTIFICATION_SMS_PROVIDER', 'log'),
+            'provider' => env('NOTIFICATION_SMS_PROVIDER', 'log'),  // log, twilio, nhn, aligo
             'api_url' => env('NOTIFICATION_SMS_API_URL'),
             'api_key' => env('NOTIFICATION_SMS_API_KEY'),
+            'from' => env('NOTIFICATION_SMS_FROM'),
+            'timeout' => env('NOTIFICATION_SMS_TIMEOUT', 10),  // HTTP 요청 타임아웃 (초)
         ],
         'slack' => [
             'enabled' => env('NOTIFICATION_SLACK_ENABLED', true),
+            'provider' => env('NOTIFICATION_SLACK_PROVIDER', 'webhook'),  // log, webhook
+            'timeout' => env('NOTIFICATION_SLACK_TIMEOUT', 5),  // HTTP 요청 타임아웃 (초)
         ],
+    ],
+
+    // 스케줄러 설정
+    'scheduler' => [
+        'scheduled_interval' => env('NOTIFICATION_SCHEDULED_INTERVAL', 1),  // 예약 알림 처리 주기 (분)
+        'batched_interval' => env('NOTIFICATION_BATCHED_INTERVAL', 5),       // 묶음 알림 처리 주기 (분)
+        'batch_limit' => env('NOTIFICATION_BATCH_LIMIT', 100),               // 한 번에 처리할 최대 알림 수
     ],
 ];
 ```
@@ -485,12 +507,14 @@ return [
 // 예약 알림 처리 (매 분)
 Schedule::command('notification:process-scheduled')
     ->everyMinute()
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->runInBackground();
 
 // 묶음 알림 처리 (5분마다)
 Schedule::command('notification:process-batched')
     ->everyFiveMinutes()
-    ->withoutOverlapping();
+    ->withoutOverlapping()
+    ->runInBackground();
 ```
 
 ## 테스트 커버리지
@@ -498,9 +522,9 @@ Schedule::command('notification:process-batched')
 | 영역 | 테스트 수 | 파일 |
 |------|----------|------|
 | Feature (API) | 15개 | `tests/Feature/Notification/NotificationControllerTest.php` |
-| Model Unit | 11개 | `tests/Unit/Models/NotificationQueueTest.php` |
+| Model Unit | 13개 | `tests/Unit/Models/NotificationQueueTest.php` |
 | Service Unit | 4개 | `tests/Unit/Services/Notification/BatchAggregatorTest.php` |
-| **총합** | **30개** | |
+| **총합** | **32개** | |
 
 ## 예외 처리
 
@@ -509,10 +533,15 @@ Schedule::command('notification:process-batched')
 | `NotificationException::invalidChannel` | 400 | 지원하지 않는 채널 |
 | `NotificationException::missingRecipient` | 400 | 채널에 필요한 수신자 정보 없음 |
 | `NotificationException::queueNotFound` | 404 | 대기열 없음 |
+| `NotificationException::logNotFound` | 404 | 로그 없음 |
 | `NotificationException::cannotCancel` | 400 | 취소 불가능한 상태 |
 | `NotificationException::cannotRetry` | 400 | 재시도 불가능한 상태 |
 | `NotificationException::scheduledAtRequired` | 400 | 예약 시간 누락 |
+| `NotificationException::scheduledAtMustBeFuture` | 400 | 예약 시간이 과거인 경우 |
 | `NotificationException::batchKeyRequired` | 400 | 배치 키 누락 |
+| `NotificationException::channelFailed` | 400 | 특정 채널 발송 실패 |
+| `NotificationException::allChannelsFailed` | 400 | 모든 채널 발송 실패 |
+| `NotificationException::dispatchFailed` | 500 | 알림 발송 처리 실패 |
 | `NotificationException::maxRetriesExceeded` | 400 | 최대 재시도 횟수 초과 |
 
 ## 참고 문서
