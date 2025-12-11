@@ -169,6 +169,11 @@ class NotificationService
         }
 
         foreach ($channels as $channel) {
+            // Handle both ChannelType enum and string
+            if ($channel instanceof ChannelType) {
+                continue;
+            }
+
             if (ChannelType::tryFrom($channel) === null) {
                 throw NotificationException::invalidChannel($channel);
             }
@@ -177,13 +182,16 @@ class NotificationService
 
     private function validateRecipient(array $channels, array $recipient): void
     {
-        foreach ($channels as $channelName) {
-            $channelType = ChannelType::from($channelName);
+        foreach ($channels as $channel) {
+            // Handle both ChannelType enum and string
+            $channelType = $channel instanceof ChannelType
+                ? $channel
+                : ChannelType::from($channel);
             $requiredFields = $channelType->requiredRecipientFields();
 
             foreach ($requiredFields as $field) {
                 if (empty($recipient[$field])) {
-                    throw NotificationException::missingRecipient($channelName, $requiredFields);
+                    throw NotificationException::missingRecipient($channelType->value, $requiredFields);
                 }
             }
         }
