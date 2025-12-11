@@ -36,8 +36,8 @@ final class JwtService
         // 새로운 Token Family 생성
         $familyId = Str::uuid()->toString();
 
-        // Refresh Token 생성 및 저장
-        $refreshToken = $this->createRefreshToken($user->id, $familyId);
+        // Refresh Token 생성 및 저장 (현재 token_version 포함)
+        $refreshToken = $this->createRefreshToken($user->id, $familyId, $user->token_version);
 
         return new TokenDTO(
             accessToken: $accessToken,
@@ -66,24 +66,34 @@ final class JwtService
 
         $userId = $tokenData['user_id'];
         $familyId = $tokenData['family'];
-
-        // 기존 Refresh Token 무효화 (사용됨)
-        $this->refreshTokenRepository->delete($refreshToken);
+        $storedTokenVersion = $tokenData['token_version'];
 
         // 사용자 조회
         $user = User::find($userId);
 
         if (! $user) {
             // 사용자가 삭제된 경우 Family 전체 무효화
+            $this->refreshTokenRepository->delete($refreshToken);
             $this->refreshTokenRepository->invalidateFamily($familyId);
             throw TokenException::invalid();
         }
 
+        // Token Version 검증 - logoutAll() 호출 후 발급된 토큰인지 확인
+        if ($user->token_version > $storedTokenVersion) {
+            // 전체 로그아웃 이후 발급된 토큰이 아님 → 무효화
+            $this->refreshTokenRepository->delete($refreshToken);
+            $this->refreshTokenRepository->invalidateFamily($familyId);
+            throw TokenException::allTokensRevoked();
+        }
+
+        // 기존 Refresh Token 무효화 (사용됨)
+        $this->refreshTokenRepository->delete($refreshToken);
+
         // 새 Access Token 생성
         $newAccessToken = $this->createAccessToken($user);
 
-        // 새 Refresh Token 생성 (동일 Family)
-        $newRefreshToken = $this->createRefreshToken($userId, $familyId);
+        // 새 Refresh Token 생성 (동일 Family, 현재 token_version 저장)
+        $newRefreshToken = $this->createRefreshToken($userId, $familyId, $user->token_version);
 
         return new TokenDTO(
             accessToken: $newAccessToken,
@@ -214,18 +224,21 @@ final class JwtService
 
     /**
      * Refresh Token 생성 및 Redis 저장
+     *
+     * @param  int  $tokenVersion  사용자의 현재 token_version (전체 로그아웃 검증용)
      */
-    private function createRefreshToken(int $userId, string $familyId): string
+    private function createRefreshToken(int $userId, string $familyId, int $tokenVersion): string
     {
         // 고유한 Refresh Token ID 생성
         $tokenId = Str::uuid()->toString();
 
-        // Redis에 저장
+        // Redis에 저장 (token_version 포함)
         $this->refreshTokenRepository->store(
             tokenId: $tokenId,
             userId: $userId,
             familyId: $familyId,
             ttlSeconds: self::REFRESH_TOKEN_TTL_SECONDS,
+            tokenVersion: $tokenVersion,
         );
 
         return $tokenId;

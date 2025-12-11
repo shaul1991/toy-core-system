@@ -187,6 +187,8 @@ final class SocialAuthService
      *
      * 일부 소셜 제공자(예: Kakao)는 이메일을 필수로 제공하지 않을 수 있습니다.
      * 이 경우 임시 이메일({provider}_{providerUserId}@noemail.local)을 생성합니다.
+     *
+     * token_version은 User 모델의 boot() 메서드에서 자동으로 1로 설정됩니다.
      */
     private function createUserFromSocial(SocialUserDTO $dto): User
     {
@@ -197,7 +199,6 @@ final class SocialAuthService
             'email' => $email,
             'avatar' => $dto->avatar,
             'password' => null, // 소셜 전용 계정
-            'token_version' => 1,
         ]);
     }
 

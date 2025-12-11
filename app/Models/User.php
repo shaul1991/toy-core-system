@@ -23,8 +23,22 @@ class User extends Authenticatable implements JWTSubject
         'email',
         'password',
         'avatar',
-        'token_version',
     ];
+
+    /**
+     * Model boot 메서드 - 기본값 설정
+     */
+    protected static function boot(): void
+    {
+        parent::boot();
+
+        // 새 사용자 생성 시 token_version 기본값 설정
+        static::creating(function (User $user): void {
+            if ($user->token_version === null) {
+                $user->token_version = 1;
+            }
+        });
+    }
 
     /**
      * The attributes that should be hidden for serialization.

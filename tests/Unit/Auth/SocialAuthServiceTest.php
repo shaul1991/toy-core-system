@@ -139,7 +139,6 @@ class SocialAuthServiceTest extends TestCase
         // 기존 사용자 생성
         $existingUser = User::factory()->create([
             'email' => 'existing@example.com',
-            'token_version' => 1,
         ]);
 
         // Mock Socialite
@@ -180,7 +179,6 @@ class SocialAuthServiceTest extends TestCase
         // 기존 사용자 및 소셜 계정 생성
         $existingUser = User::factory()->create([
             'email' => 'user@example.com',
-            'token_version' => 1,
         ]);
 
         SocialAccount::create([
@@ -220,9 +218,7 @@ class SocialAuthServiceTest extends TestCase
 
     public function test_link_account_links_social_to_current_user(): void
     {
-        $user = User::factory()->create([
-            'token_version' => 1,
-        ]);
+        $user = User::factory()->create();
 
         // Mock Socialite
         $mockSocialiteUser = $this->createMockSocialiteUser([

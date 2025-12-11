@@ -17,12 +17,13 @@ final class RedisRefreshTokenRepository implements RefreshTokenRepositoryInterfa
     /**
      * {@inheritDoc}
      */
-    public function store(string $tokenId, int $userId, string $familyId, int $ttlSeconds): void
+    public function store(string $tokenId, int $userId, string $familyId, int $ttlSeconds, int $tokenVersion): void
     {
         $key = self::PREFIX_REFRESH_TOKEN.$tokenId;
         $data = json_encode([
             'user_id' => $userId,
             'family' => $familyId,
+            'token_version' => $tokenVersion,
         ]);
 
         Redis::setex($key, $ttlSeconds, $data);
@@ -50,6 +51,7 @@ final class RedisRefreshTokenRepository implements RefreshTokenRepositoryInterfa
         return [
             'user_id' => (int) $decoded['user_id'],
             'family' => $decoded['family'],
+            'token_version' => (int) ($decoded['token_version'] ?? 1),
         ];
     }
 
