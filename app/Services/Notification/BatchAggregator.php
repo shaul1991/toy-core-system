@@ -54,6 +54,14 @@ class BatchAggregator
             }
         }
 
+        // activity.type 기준으로 by_type 재계산
+        $byType = [];
+        foreach ($activities as $activity) {
+            $activityType = $activity['type'] ?? 'unknown';
+            $byType[$activityType] = ($byType[$activityType] ?? 0) + 1;
+        }
+        $summary['by_type'] = $byType;
+
         return [
             'title' => '활동 요약',
             'subject' => "새로운 활동 {$summary['total_count']}건",
