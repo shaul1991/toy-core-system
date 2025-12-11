@@ -653,6 +653,86 @@ Authorization: Bearer {access_token}
 }
 ```
 
+### 전체 로그아웃 (모든 디바이스)
+
+```
+POST /api/auth/logout-all
+```
+
+**Headers**
+```
+Authorization: Bearer {access_token}
+```
+
+**응답 (200 OK)**
+```json
+{
+    "success": true,
+    "data": {
+        "message": "모든 디바이스에서 로그아웃되었습니다."
+    }
+}
+```
+
+**에러 (401 Unauthorized)**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "UNAUTHORIZED",
+        "message": "인증이 필요합니다."
+    }
+}
+```
+
+> **Note**: 이 엔드포인트는 사용자의 `token_version`을 증가시켜 기존 발급된 모든 Access Token과 Refresh Token을 무효화합니다.
+
+### 토큰 유효성 검증
+
+```
+POST /api/auth/validate
+```
+
+**Headers**
+```
+Authorization: Bearer {access_token}
+```
+
+**응답 (200 OK)**
+```json
+{
+    "success": true,
+    "data": {
+        "valid": true,
+        "user_id": 1,
+        "expires_in": 3542,
+        "token_type": "access"
+    }
+}
+```
+
+**에러 (401 Unauthorized) - 토큰 만료**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "UNAUTHORIZED",
+        "message": "토큰이 만료되었습니다."
+    }
+}
+```
+
+**에러 (401 Unauthorized) - 토큰 무효**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "UNAUTHORIZED",
+        "message": "유효하지 않은 토큰입니다."
+    }
+}
+```
+
 ### 현재 사용자 정보
 
 ```
