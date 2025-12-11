@@ -6,6 +6,7 @@ namespace App\Http\Requests\Notification;
 
 use App\Enums\Notification\ChannelType;
 use App\Enums\Notification\DispatchType;
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -14,6 +15,25 @@ class StoreNotificationRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $channels = $this->input('channels', []);
+            $recipient = $this->input('recipient', []);
+
+            foreach (ChannelType::fromValues($channels) as $channel) {
+                foreach ($channel->requiredRecipientFields() as $field) {
+                    if (empty($recipient[$field] ?? null)) {
+                        $validator->errors()->add(
+                            "recipient.{$field}",
+                            "{$channel->label()} 채널 사용 시 recipient.{$field}는 필수입니다."
+                        );
+                    }
+                }
+            }
+        });
     }
 
     public function rules(): array
