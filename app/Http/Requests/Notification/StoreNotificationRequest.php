@@ -79,11 +79,11 @@ class StoreNotificationRequest extends FormRequest
 
     public function getDispatchType(): DispatchType
     {
-        return DispatchType::from($this->input('dispatch_type'));
+        return DispatchType::from($this->validated('dispatch_type'));
     }
 
     public function getChannels(): array
     {
-        return $this->input('channels');
+        return $this->validated('channels');
     }
 }

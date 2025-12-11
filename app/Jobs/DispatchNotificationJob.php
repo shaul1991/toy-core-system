@@ -52,18 +52,21 @@ class DispatchNotificationJob implements ShouldQueue
         $dispatcher->dispatch($queue);
     }
 
-    public function failed(?Throwable $exception): void
+    public function failed(Throwable $exception): void
     {
+        $errorMessage = mb_substr($exception->getMessage(), 0, 1000);
+
         Log::error('Notification job failed', [
             'queue_id' => $this->queueId,
-            'error' => $exception?->getMessage(),
+            'exception' => get_class($exception),
+            'error' => $errorMessage,
         ]);
 
         $queueRepository = app(NotificationQueueRepositoryInterface::class);
         $queue = $queueRepository->findById($this->queueId);
 
         if ($queue !== null && ! $queue->status->isTerminal()) {
-            $queueRepository->markAsFailed($queue, $exception?->getMessage() ?? 'Unknown error');
+            $queueRepository->markAsFailed($queue, $errorMessage);
         }
     }
 
