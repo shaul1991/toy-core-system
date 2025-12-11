@@ -364,6 +364,7 @@ tests/
 | `email_verified_at` | TIMESTAMP | 이메일 인증 시간 |
 | `password` | VARCHAR(255) | 비밀번호 (nullable - 소셜 전용 계정) |
 | `avatar` | VARCHAR(255) | 프로필 이미지 URL (nullable) |
+| `token_version` | INT | 토큰 버전 (기본: 1) - 전체 토큰 무효화 용 |
 | `remember_token` | VARCHAR(100) | Remember Token |
 | `created_at` | TIMESTAMP | 생성 시간 |
 | `updated_at` | TIMESTAMP | 수정 시간 |
@@ -409,11 +410,11 @@ CREATE UNIQUE INDEX users_email_unique ON users (email);
 │ email_verified_at       │       │ provider_user_id                │  │
 │ password (nullable)     │       │ provider_email                  │  │
 │ avatar (nullable)       │       │ provider_token                  │  │
-│ remember_token          │       │ provider_refresh_token          │  │
-│ created_at              │       │ token_expires_at                │  │
-│ updated_at              │       │ created_at                      │  │
-└─────────────────────────┘       │ updated_at                      │
-                                  └─────────────────────────────────┘
+│ token_version           │       │ provider_refresh_token          │  │
+│ remember_token          │       │ token_expires_at                │  │
+│ created_at              │       │ created_at                      │  │
+│ updated_at              │       │ updated_at                      │  │
+└─────────────────────────┘       └─────────────────────────────────┘
 
         1                    :                    N
       (User)              ────────────▶    (SocialAccounts)
@@ -723,6 +724,325 @@ Authorization: Bearer {access_token}
 
 ---
 
+## 보안
+
+### Refresh Token Rotation
+
+Refresh Token 탈취 시 피해를 최소화하기 위해 **토큰 갱신 시마다 새로운 Refresh Token을 발급**합니다.
+
+#### 동작 방식
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client
+    participant Server
+    participant Redis
+    participant DB
+
+    Client->>Server: POST /auth/refresh<br/>(refresh_token_v1)
+    Server->>Redis: refresh_token_v1 검증
+
+    alt 토큰 유효
+        Redis-->>Server: 유효 (user_id, token_family)
+        Server->>Redis: refresh_token_v1 무효화 (삭제)
+        Server->>Server: 새 access_token 생성
+        Server->>Server: 새 refresh_token_v2 생성<br/>(동일 token_family)
+        Server->>Redis: refresh_token_v2 저장<br/>TTL: 7일
+        Server-->>Client: access_token + refresh_token_v2
+    else 토큰 재사용 감지 (이미 사용됨)
+        Redis-->>Server: 토큰 없음 (이미 사용됨)
+        Server->>Redis: 해당 token_family 전체 무효화
+        Server->>DB: 사용자 보안 알림 기록
+        Server-->>Client: 401 TOKEN_REUSE_DETECTED
+        Note over Client: 재로그인 필요 + 보안 경고
+    else 토큰 만료/무효
+        Redis-->>Server: 토큰 없음
+        Server-->>Client: 401 REFRESH_TOKEN_EXPIRED
+    end
+```
+
+#### Token Family 개념
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         Token Family                                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  로그인 시 새로운 token_family (UUID) 생성                                │
+│                                                                         │
+│  ┌─────────────┐    갱신    ┌─────────────┐    갱신    ┌─────────────┐  │
+│  │ refresh_v1  │ ────────▶ │ refresh_v2  │ ────────▶ │ refresh_v3  │  │
+│  │ family: A   │           │ family: A   │           │ family: A   │  │
+│  │ (무효화)    │           │ (무효화)    │           │ (현재 유효)  │  │
+│  └─────────────┘           └─────────────┘           └─────────────┘  │
+│                                                                         │
+│  ⚠️ refresh_v1 재사용 시도 → family A 전체 무효화 → 재로그인 필요         │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Redis 저장 구조
+
+```
+# Refresh Token 저장
+Key:   refresh_token:{jti}
+Value: { "user_id": 1, "family": "uuid-family-id" }
+TTL:   604800 (7일)
+
+# Token Family 관리 (선택적)
+Key:   token_family:{family_id}
+Value: { "user_id": 1, "created_at": "...", "last_used": "..." }
+TTL:   604800 (7일)
+```
+
+---
+
+### Token Blacklist (토큰 무효화)
+
+로그아웃 및 보안 이벤트 발생 시 토큰을 즉시 무효화합니다.
+
+#### 무효화 전략
+
+| 전략 | 구현 | 장점 | 단점 |
+|------|------|------|------|
+| **Redis Blacklist** ⭐ | JWT ID(jti)를 Redis에 저장 | 빠른 검증, 확장성 | Redis 의존성 |
+| Token Version | DB에 버전 저장, JWT에 포함 | 전체 토큰 일괄 무효화 | DB 조회 필요 |
+| Short-lived Token | Access Token 수명 단축 (5분) | 간단, Blacklist 불필요 | 잦은 갱신 요청 |
+
+#### Redis Blacklist 구현 (권장)
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      Token Blacklist Flow                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  [로그아웃 시]                                                           │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  1. Access Token의 jti 추출                                      │   │
+│  │  2. Redis에 저장: blacklist:access:{jti} = 1                     │   │
+│  │     TTL = 토큰 남은 만료 시간                                     │   │
+│  │  3. Refresh Token도 동일하게 처리                                 │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  [토큰 검증 시]                                                          │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  1. JWT 서명 검증                                                 │   │
+│  │  2. 만료 시간 확인                                                │   │
+│  │  3. Redis Blacklist 확인: EXISTS blacklist:access:{jti}          │   │
+│  │     → 존재하면 401 UNAUTHORIZED (TOKEN_REVOKED)                   │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Redis 키 구조
+
+```
+# Access Token Blacklist
+Key:   blacklist:access:{jti}
+Value: 1
+TTL:   토큰 남은 만료 시간 (최대 3600초)
+
+# Refresh Token Blacklist (Token Rotation 사용 시 불필요)
+Key:   blacklist:refresh:{jti}
+Value: 1
+TTL:   토큰 남은 만료 시간 (최대 604800초)
+```
+
+#### 전체 토큰 무효화 (Token Version)
+
+비밀번호 변경, 계정 탈취 의심 등 모든 세션을 종료해야 할 때 사용합니다.
+
+```sql
+-- users 테이블에 token_version 컬럼 추가
+ALTER TABLE users ADD COLUMN token_version INT DEFAULT 1;
+
+-- 전체 토큰 무효화 시
+UPDATE users SET token_version = token_version + 1 WHERE id = ?;
+```
+
+```json
+// JWT Claims에 token_version 포함
+{
+    "sub": "1",
+    "token_version": 3,
+    ...
+}
+```
+
+```
+검증 시: JWT의 token_version과 DB의 token_version 비교
+→ 불일치 시 401 UNAUTHORIZED (ALL_TOKENS_REVOKED)
+```
+
+---
+
+### 토큰 저장 보안 가이드
+
+#### 저장 위치별 보안 비교
+
+| 저장 위치 | XSS 공격 | CSRF 공격 | 새로고침 유지 | 권장 |
+|----------|:--------:|:--------:|:------------:|:----:|
+| localStorage | ⚠️ 취약 | ✅ 안전 | ✅ 유지 | ❌ |
+| sessionStorage | ⚠️ 취약 | ✅ 안전 | ❌ 탭별 | ❌ |
+| HttpOnly Cookie | ✅ 안전 | ⚠️ 취약 | ✅ 유지 | ⭕ |
+| Memory (JS 변수) | ✅ 안전 | ✅ 안전 | ❌ 초기화 | ⭕ |
+
+#### 권장 저장 방식
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     권장 토큰 저장 전략                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  [Access Token]                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  저장: JavaScript 메모리 (변수) 또는 HttpOnly Cookie              │   │
+│  │  전송: Authorization: Bearer {token} 헤더                        │   │
+│  │                                                                  │   │
+│  │  ※ 메모리 저장 시: 새로고침하면 토큰 소실 → Refresh Token으로 복구  │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+│  [Refresh Token]                                                        │
+│  ┌─────────────────────────────────────────────────────────────────┐   │
+│  │  저장: HttpOnly + Secure + SameSite=Strict Cookie               │   │
+│  │  전송: Cookie 자동 전송 (갱신 요청 시)                            │   │
+│  │                                                                  │   │
+│  │  Cookie 설정:                                                    │   │
+│  │  Set-Cookie: refresh_token=xxx;                                 │   │
+│  │              HttpOnly;                                          │   │
+│  │              Secure;                                            │   │
+│  │              SameSite=Strict;                                   │   │
+│  │              Path=/api/auth/refresh;                            │   │
+│  │              Max-Age=604800                                     │   │
+│  └─────────────────────────────────────────────────────────────────┘   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### CSRF 보호 (Cookie 사용 시)
+
+HttpOnly Cookie로 토큰을 전송할 경우 CSRF 공격에 대비해야 합니다.
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      CSRF 보호 전략                                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  1. SameSite=Strict 쿠키 속성 사용                                       │
+│     → 크로스 사이트 요청에서 쿠키 전송 차단                               │
+│                                                                         │
+│  2. Double Submit Cookie 패턴                                           │
+│     → CSRF Token을 Cookie + Header 양쪽에 전송, 서버에서 비교            │
+│                                                                         │
+│  3. Origin 헤더 검증                                                     │
+│     → 요청의 Origin이 허용된 도메인인지 확인                              │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Front-end 구현 예시
+
+```typescript
+// 토큰 관리 (메모리 + Cookie 혼합 방식)
+class TokenManager {
+    private accessToken: string | null = null;
+
+    // Access Token은 메모리에 저장
+    setAccessToken(token: string) {
+        this.accessToken = token;
+    }
+
+    getAccessToken(): string | null {
+        return this.accessToken;
+    }
+
+    // Refresh Token은 HttpOnly Cookie로 서버에서 설정
+    // 클라이언트에서 직접 접근 불가
+
+    // 새로고침 시 토큰 복구
+    async restoreSession() {
+        if (!this.accessToken) {
+            const response = await fetch('/api/auth/refresh', {
+                method: 'POST',
+                credentials: 'include', // Cookie 포함
+            });
+            if (response.ok) {
+                const { access_token } = await response.json();
+                this.setAccessToken(access_token);
+            }
+        }
+    }
+}
+```
+
+---
+
+### Rate Limiting
+
+인증 관련 엔드포인트에 요청 제한을 적용하여 브루트포스 공격을 방지합니다.
+
+#### 엔드포인트별 제한
+
+| 엔드포인트 | 제한 | 기준 | 차단 시간 |
+|-----------|------|------|----------|
+| `POST /auth/{provider}/callback` | 10회/분 | IP | 5분 |
+| `POST /auth/refresh` | 30회/분 | IP + User | 1분 |
+| `POST /auth/logout` | 10회/분 | User | 1분 |
+| `GET /auth/me` | 60회/분 | User | 30초 |
+| `POST /auth/{provider}/link` | 5회/분 | User | 5분 |
+
+#### 구현 (Laravel Middleware)
+
+```php
+// routes/api.php
+Route::prefix('auth')->group(function () {
+    // 소셜 로그인 콜백 - IP 기준 제한
+    Route::get('{provider}/callback', [SocialAuthController::class, 'callback'])
+        ->middleware('throttle:10,1'); // 10회/분
+
+    // 토큰 갱신 - 더 느슨한 제한
+    Route::post('refresh', [SocialAuthController::class, 'refresh'])
+        ->middleware('throttle:30,1'); // 30회/분
+
+    // 인증 필요 엔드포인트
+    Route::middleware(['auth:api', 'throttle:60,1'])->group(function () {
+        Route::get('me', [SocialAuthController::class, 'me']);
+        Route::post('logout', [SocialAuthController::class, 'logout']);
+        Route::post('{provider}/link', [SocialAuthController::class, 'link'])
+            ->middleware('throttle:5,1'); // 연동은 더 엄격하게
+    });
+});
+```
+
+#### Rate Limit 응답
+
+```json
+// 429 Too Many Requests
+{
+    "success": false,
+    "error": {
+        "code": "TOO_MANY_REQUESTS",
+        "message": "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.",
+        "details": {
+            "retry_after": 60
+        }
+    }
+}
+```
+
+#### 응답 헤더
+
+```
+X-RateLimit-Limit: 10
+X-RateLimit-Remaining: 3
+X-RateLimit-Reset: 1702267200
+Retry-After: 60  (429 응답 시)
+```
+
+---
+
 ## 예외 처리
 
 | 예외 | HTTP | 상황 |
@@ -740,10 +1060,14 @@ Authorization: Bearer {access_token}
 |------|------|
 | `INVALID_TOKEN` | JWT 토큰이 유효하지 않음 |
 | `TOKEN_EXPIRED` | JWT 토큰 만료 |
+| `TOKEN_REVOKED` | JWT 토큰이 무효화됨 (로그아웃 등) |
+| `TOKEN_REUSE_DETECTED` | Refresh Token 재사용 감지 (보안 위협) |
+| `ALL_TOKENS_REVOKED` | 모든 토큰 무효화됨 (비밀번호 변경 등) |
 | `REFRESH_TOKEN_EXPIRED` | Refresh Token 만료 |
 | `SOCIAL_ACCOUNT_ALREADY_LINKED` | 소셜 계정이 이미 연동됨 |
 | `UNSUPPORTED_PROVIDER` | 지원하지 않는 소셜 Provider |
 | `SOCIAL_AUTH_FAILED` | 소셜 인증 실패 |
+| `TOO_MANY_REQUESTS` | 요청 한도 초과 (Rate Limit) |
 
 ---
 
