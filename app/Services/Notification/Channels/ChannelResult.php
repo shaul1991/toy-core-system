@@ -47,6 +47,7 @@ final readonly class ChannelResult
     public function toArray(): array
     {
         $result = [
+            'channel' => $this->channel,
             'status' => $this->status,
         ];
 
