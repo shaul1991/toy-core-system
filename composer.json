@@ -8,9 +8,13 @@
     "require": {
         "php": "^8.4",
         "laravel/framework": "^12.0",
+        "laravel/socialite": "^5.24",
         "laravel/tinker": "^2.10.1",
         "league/flysystem-aws-s3-v3": "^3.0",
+        "php-open-source-saver/jwt-auth": "^2.8",
         "sentry/sentry-laravel": "^4.20",
+        "socialiteproviders/kakao": "^4.3",
+        "socialiteproviders/naver": "^4.1",
         "wotz/laravel-swagger-ui": "^1.2"
     },
     "require-dev": {
