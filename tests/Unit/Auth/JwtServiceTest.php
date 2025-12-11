@@ -208,7 +208,6 @@ class JwtServiceTest extends TestCase
     public function test_validate_access_token_throws_exception_when_token_version_mismatch(): void
     {
         $user = User::factory()->create();
-        $initialTokenVersion = $user->token_version;
 
         // 토큰 생성
         $this->mockRepository
