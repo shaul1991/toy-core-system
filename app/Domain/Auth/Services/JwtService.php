@@ -23,6 +23,7 @@ final class JwtService
     public function __construct(
         private readonly JWTAuth $jwt,
         private readonly RefreshTokenRepositoryInterface $refreshTokenRepository,
+        private readonly UserCacheServiceInterface $userCacheService,
     ) {}
 
     /**
@@ -68,8 +69,8 @@ final class JwtService
         $familyId = $tokenData['family'];
         $storedTokenVersion = $tokenData['token_version'];
 
-        // 사용자 조회
-        $user = User::find($userId);
+        // 사용자 조회 (캐시 활용, token_version 검증 포함)
+        $user = $this->userCacheService->findWithVersionCheck($userId, $storedTokenVersion);
 
         if (! $user) {
             // 사용자가 삭제된 경우 Family 전체 무효화
@@ -113,9 +114,11 @@ final class JwtService
         $this->refreshTokenRepository->invalidateFamily($familyId);
 
         // 사용자의 토큰 버전 증가 (모든 Access Token도 무효화)
-        $user = User::find($userId);
+        $user = $this->userCacheService->find($userId);
         if ($user) {
             $user->invalidateAllTokens();
+            // 캐시 무효화 (token_version 변경됨)
+            $this->userCacheService->invalidate($userId);
         }
     }
 
@@ -158,6 +161,8 @@ final class JwtService
     public function logoutAll(User $user): void
     {
         $user->invalidateAllTokens();
+        // 캐시 무효화 (token_version 변경됨)
+        $this->userCacheService->invalidate($user->id);
     }
 
     /**

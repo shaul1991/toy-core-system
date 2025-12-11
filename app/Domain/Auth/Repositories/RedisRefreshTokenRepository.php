@@ -16,22 +16,25 @@ final class RedisRefreshTokenRepository implements RefreshTokenRepositoryInterfa
 
     /**
      * {@inheritDoc}
+     *
+     * Pipeline을 사용하여 3개의 Redis 명령을 단일 round-trip으로 실행
      */
     public function store(string $tokenId, int $userId, string $familyId, int $ttlSeconds, int $tokenVersion): void
     {
         $key = self::PREFIX_REFRESH_TOKEN.$tokenId;
+        $familyKey = self::PREFIX_TOKEN_FAMILY.$familyId;
         $data = json_encode([
             'user_id' => $userId,
             'family' => $familyId,
             'token_version' => $tokenVersion,
         ]);
 
-        Redis::setex($key, $ttlSeconds, $data);
-
-        // Token Family에 토큰 ID 추가
-        $familyKey = self::PREFIX_TOKEN_FAMILY.$familyId;
-        Redis::sadd($familyKey, $tokenId);
-        Redis::expire($familyKey, $ttlSeconds);
+        // Pipeline으로 3개 명령을 단일 round-trip으로 최적화
+        Redis::pipeline(function ($pipe) use ($key, $familyKey, $tokenId, $data, $ttlSeconds) {
+            $pipe->setex($key, $ttlSeconds, $data);
+            $pipe->sadd($familyKey, $tokenId);
+            $pipe->expire($familyKey, $ttlSeconds);
+        });
     }
 
     /**
@@ -66,25 +69,34 @@ final class RedisRefreshTokenRepository implements RefreshTokenRepositoryInterfa
 
     /**
      * {@inheritDoc}
+     *
+     * Lua Script를 사용하여 원자적으로 Family의 모든 토큰을 삭제
      */
     public function invalidateFamily(string $familyId): void
     {
         $familyKey = self::PREFIX_TOKEN_FAMILY.$familyId;
 
-        // Family에 속한 모든 토큰 ID 조회
-        $tokenIds = Redis::smembers($familyKey);
+        // Lua Script로 원자적 실행 (SMEMBERS + DEL을 서버 사이드에서 처리)
+        $luaScript = <<<'LUA'
+            local familyKey = KEYS[1]
+            local prefix = ARGV[1]
 
-        if (! empty($tokenIds)) {
-            // 모든 Refresh Token 삭제
-            $keys = array_map(
-                fn ($id) => self::PREFIX_REFRESH_TOKEN.$id,
-                $tokenIds
-            );
-            Redis::del($keys);
-        }
+            local tokenIds = redis.call('SMEMBERS', familyKey)
 
-        // Family 키 삭제
-        Redis::del($familyKey);
+            if #tokenIds > 0 then
+                local keys = {}
+                for i, tokenId in ipairs(tokenIds) do
+                    keys[i] = prefix .. tokenId
+                end
+                redis.call('DEL', unpack(keys))
+            end
+
+            redis.call('DEL', familyKey)
+
+            return #tokenIds
+        LUA;
+
+        Redis::eval($luaScript, 1, $familyKey, self::PREFIX_REFRESH_TOKEN);
     }
 
     /**

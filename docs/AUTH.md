@@ -356,14 +356,20 @@ app/
 │       │   └── SocialAuthController.php          # 소셜 인증 컨트롤러
 │       ├── Services/
 │       │   ├── SocialAuthService.php             # 소셜 인증 비즈니스 로직
-│       │   └── JwtService.php                    # JWT 토큰 관리
+│       │   ├── JwtService.php                    # JWT 토큰 관리
+│       │   ├── UserCacheService.php              # 사용자 캐시 서비스
+│       │   └── UserCacheServiceInterface.php     # 캐시 서비스 인터페이스
 │       ├── Models/
 │       │   └── SocialAccount.php                 # 소셜 계정 모델
 │       ├── Repositories/
 │       │   ├── SocialAccountRepositoryInterface.php
 │       │   ├── EloquentSocialAccountRepository.php
+│       │   ├── RefreshTokenRepositoryInterface.php # Refresh Token 인터페이스
+│       │   ├── RedisRefreshTokenRepository.php   # Redis 토큰 저장소
 │       │   ├── UserRepositoryInterface.php
 │       │   └── EloquentUserRepository.php
+│       ├── Observers/
+│       │   └── UserObserver.php                  # 사용자 모델 옵저버
 │       ├── DTOs/
 │       │   ├── SocialUserDTO.php                 # 소셜 사용자 정보
 │       │   └── TokenDTO.php                      # JWT 토큰 정보
@@ -1166,6 +1172,191 @@ Retry-After: 60  (429 응답 시)
 
 ---
 
+## 캐싱 전략
+
+성능 최적화를 위해 다층 캐싱 전략을 사용합니다.
+
+### 캐시 레이어 구조
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           캐싱 아키텍처                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  [User Cache Layer]                                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Key:    user:{user_id}                                              │   │
+│  │  Value:  Serialized User Model                                       │   │
+│  │  TTL:    300초 (5분)                                                 │   │
+│  │  Store:  Laravel Cache (Redis/File)                                  │   │
+│  │                                                                      │   │
+│  │  무효화 조건:                                                         │   │
+│  │  - User 모델 updated 이벤트                                          │   │
+│  │  - User 모델 deleted 이벤트                                          │   │
+│  │  - token_version 불일치 감지 시                                       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  [Refresh Token Layer]                                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Key:    refresh_token:{jti}                                         │   │
+│  │  Value:  { user_id, family, token_version }                          │   │
+│  │  TTL:    604800초 (7일)                                              │   │
+│  │  Store:  Redis                                                       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  [Token Family Layer]                                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Key:    token_family:{family_id}                                    │   │
+│  │  Value:  Set of token JTIs                                           │   │
+│  │  TTL:    604800초 (7일)                                              │   │
+│  │  Store:  Redis                                                       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  [Access Token Blacklist]                                                   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Key:    blacklist:access:{jti}                                      │   │
+│  │  Value:  1                                                           │   │
+│  │  TTL:    토큰 남은 만료 시간 (최대 3600초)                             │   │
+│  │  Store:  Redis                                                       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### UserCacheService
+
+JWT 검증 및 토큰 갱신 시 빈번하게 발생하는 사용자 조회를 최적화합니다.
+
+```php
+// 캐시 조회 (없으면 DB에서 조회 후 캐시)
+$user = $userCacheService->find($userId);
+
+// token_version 검증 포함 조회
+$user = $userCacheService->findWithVersionCheck($userId, $expectedVersion);
+
+// 캐시 무효화
+$userCacheService->invalidate($userId);
+
+// 캐시 갱신
+$userCacheService->refresh($user);
+```
+
+#### token_version 검증 흐름
+
+```mermaid
+flowchart TD
+    A[캐시 조회] --> B{캐시 존재?}
+    B -->|Yes| C{token_version 일치?}
+    B -->|No| D[DB 조회]
+    C -->|Yes| E[캐시된 User 반환]
+    C -->|No| F[캐시 무효화]
+    F --> D
+    D --> G[캐시 저장]
+    G --> H[User 반환]
+```
+
+### Redis Pipeline 최적화
+
+Refresh Token 저장 시 3개의 Redis 명령을 단일 round-trip으로 최적화합니다.
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Redis Pipeline 최적화                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  [Before - 3 round-trips]                                                   │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Client ──SETEX──▶ Redis                                             │   │
+│  │  Client ◀──OK──── Redis                                             │   │
+│  │  Client ──SADD───▶ Redis                                             │   │
+│  │  Client ◀──OK──── Redis                                             │   │
+│  │  Client ──EXPIRE─▶ Redis                                             │   │
+│  │  Client ◀──OK──── Redis                                             │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  [After - 1 round-trip with Pipeline]                                       │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Client ──[SETEX, SADD, EXPIRE]──▶ Redis                             │   │
+│  │  Client ◀──[OK, OK, OK]────────── Redis                             │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  ※ 네트워크 지연 감소: ~3ms → ~1ms (약 66% 개선)                            │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Lua Script 원자적 연산
+
+Token Family 무효화 시 SMEMBERS + DEL을 원자적으로 실행합니다.
+
+```lua
+-- Token Family 전체 무효화 Lua Script
+local familyKey = KEYS[1]
+local prefix = ARGV[1]
+
+local tokenIds = redis.call('SMEMBERS', familyKey)
+
+if #tokenIds > 0 then
+    local keys = {}
+    for i, tokenId in ipairs(tokenIds) do
+        keys[i] = prefix .. tokenId
+    end
+    redis.call('DEL', unpack(keys))
+end
+
+redis.call('DEL', familyKey)
+return #tokenIds
+```
+
+### 캐시 무효화 자동화 (Observer)
+
+User 모델의 변경사항을 감지하여 캐시를 자동으로 무효화합니다.
+
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      UserObserver 캐시 무효화                                 │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  [이벤트 흐름]                                                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  User->save()                                                        │   │
+│  │       ↓                                                              │   │
+│  │  Eloquent 'updated' Event                                            │   │
+│  │       ↓                                                              │   │
+│  │  UserObserver::updated($user)                                        │   │
+│  │       ↓                                                              │   │
+│  │  UserCacheService->invalidate($user->id)                             │   │
+│  │       ↓                                                              │   │
+│  │  Cache::forget('user:{id}')                                          │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  [처리되는 이벤트]                                                           │
+│  - updated: 사용자 정보 수정 시                                              │
+│  - deleted: 사용자 삭제 시                                                   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 캐시 키 요약
+
+| 키 패턴 | TTL | 용도 |
+|---------|-----|------|
+| `user:{id}` | 5분 | 사용자 정보 캐시 |
+| `refresh_token:{jti}` | 7일 | Refresh Token 저장 |
+| `token_family:{family_id}` | 7일 | Token Family 관리 |
+| `blacklist:access:{jti}` | 토큰 남은 시간 | Access Token 블랙리스트 |
+
+### 관련 파일
+
+| 파일 | 설명 |
+|------|------|
+| `app/Domain/Auth/Services/UserCacheService.php` | 사용자 캐시 서비스 |
+| `app/Domain/Auth/Services/UserCacheServiceInterface.php` | 캐시 서비스 인터페이스 |
+| `app/Domain/Auth/Observers/UserObserver.php` | 사용자 모델 옵저버 |
+| `app/Domain/Auth/Repositories/RedisRefreshTokenRepository.php` | Redis 토큰 저장소 |
+
+---
+
 ## 예외 처리
 
 | 예외 | HTTP | 상황 |
@@ -1230,6 +1421,7 @@ KAKAO_REDIRECT_URI=https://your-domain.com/api/auth/kakao/callback
 | Feature (JWT 인증) | - | `tests/Feature/Auth/JwtAuthenticationTest.php` |
 | Service Unit | - | `tests/Unit/Auth/SocialAuthServiceTest.php` |
 | JWT Unit | - | `tests/Unit/Auth/JwtServiceTest.php` |
+| Observer Unit | 2 | `tests/Unit/Auth/UserObserverTest.php` |
 
 ---
 

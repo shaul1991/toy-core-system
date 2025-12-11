@@ -2,8 +2,12 @@
 
 namespace App\Providers;
 
+use App\Domain\Auth\Observers\UserObserver;
 use App\Domain\Auth\Repositories\RedisRefreshTokenRepository;
 use App\Domain\Auth\Repositories\RefreshTokenRepositoryInterface;
+use App\Domain\Auth\Services\UserCacheService;
+use App\Domain\Auth\Services\UserCacheServiceInterface;
+use App\Models\User;
 use App\Repositories\CachedFileRepository;
 use App\Repositories\CachedTimerRepository;
 use App\Repositories\EloquentNotificationLogRepository;
@@ -36,6 +40,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(
             RefreshTokenRepositoryInterface::class,
             RedisRefreshTokenRepository::class
+        );
+
+        // Auth - UserCache Service
+        $this->app->bind(
+            UserCacheServiceInterface::class,
+            UserCacheService::class
         );
 
         // EloquentTimerRepository를 싱글톤으로 등록
@@ -101,6 +111,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // User 모델 옵저버 등록 (캐시 무효화)
+        User::observe(UserObserver::class);
+
         // Socialite 확장 프로바이더 등록 (Naver, Kakao)
         Event::listen(SocialiteWasCalled::class, NaverExtendSocialite::class.'@handle');
         Event::listen(SocialiteWasCalled::class, KakaoExtendSocialite::class.'@handle');
