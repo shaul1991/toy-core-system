@@ -164,7 +164,7 @@ class NotificationController extends Controller
             'payload' => $log->payload,
             'status' => $log->status->value,
             'channel_results' => $log->channel_results,
-            'sent_at' => $log->sent_at->toIso8601String(),
+            'sent_at' => $log->sent_at?->toIso8601String(),
             'created_at' => $log->created_at->toIso8601String(),
         ];
     }
