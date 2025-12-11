@@ -6,8 +6,10 @@ namespace App\Services\Notification\Channels;
 
 use App\Enums\Notification\ChannelType;
 use App\Models\NotificationQueue;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 use Throwable;
 
 class SmsChannel implements NotificationChannelInterface
@@ -189,23 +191,36 @@ class SmsChannel implements NotificationChannelInterface
             return 'sms_log_'.uniqid();
         }
 
-        $response = Http::withHeaders([
-            'Authorization' => "Bearer {$apiKey}",
-        ])->post($apiUrl, [
-            'to' => $phone,
-            'message' => $message,
-            'from' => $this->config['from'] ?? '',
-        ]);
+        $timeout = $this->config['timeout'] ?? config('notification.channels.sms.timeout', 10);
 
-        if (! $response->successful()) {
-            throw new \RuntimeException('SMS API 호출 실패: '.$response->body());
+        try {
+            $response = Http::timeout($timeout)
+                ->withHeaders([
+                    'Authorization' => "Bearer {$apiKey}",
+                ])->post($apiUrl, [
+                    'to' => $phone,
+                    'message' => $message,
+                    'from' => $this->config['from'] ?? '',
+                ]);
+
+            if (! $response->successful()) {
+                throw new RuntimeException(
+                    "SMS API 호출 실패: status={$response->status()}, body={$response->body()}"
+                );
+            }
+
+            Log::info('SMS notification sent', [
+                'queue_id' => $queueId,
+                'phone' => $this->maskPhone($phone),
+            ]);
+
+            return $response->json('message_id', 'sms_'.uniqid());
+        } catch (ConnectionException $e) {
+            throw new RuntimeException(
+                "SMS API 연결 실패: {$e->getMessage()} (timeout={$timeout}s)",
+                0,
+                $e
+            );
         }
-
-        Log::info('SMS notification sent', [
-            'queue_id' => $queueId,
-            'phone' => $this->maskPhone($phone),
-        ]);
-
-        return $response->json('message_id', 'sms_'.uniqid());
     }
 }

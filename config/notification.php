@@ -50,6 +50,7 @@ return [
             'api_url' => env('NOTIFICATION_SMS_API_URL'),
             'api_key' => env('NOTIFICATION_SMS_API_KEY'),
             'from' => env('NOTIFICATION_SMS_FROM'),
+            'timeout' => env('NOTIFICATION_SMS_TIMEOUT', 10), // HTTP 요청 타임아웃 (초)
         ],
 
         'slack' => [
