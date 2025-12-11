@@ -60,6 +60,10 @@ class EloquentNotificationLogRepository implements NotificationLogRepositoryInte
 
         if ($from !== null && $to !== null) {
             $query->sentBetween($from, $to);
+        } elseif ($from !== null) {
+            $query->where('sent_at', '>=', $from);
+        } elseif ($to !== null) {
+            $query->where('sent_at', '<=', $to);
         }
 
         return $query->count();
@@ -71,6 +75,10 @@ class EloquentNotificationLogRepository implements NotificationLogRepositoryInte
 
         if ($from !== null && $to !== null) {
             $query->sentBetween($from, $to);
+        } elseif ($from !== null) {
+            $query->where('sent_at', '>=', $from);
+        } elseif ($to !== null) {
+            $query->where('sent_at', '<=', $to);
         }
 
         return $query->count();
