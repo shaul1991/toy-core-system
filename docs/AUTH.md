@@ -1,0 +1,795 @@
+# Auth 도메인
+
+Auth 도메인은 JWT 기반 인증/인가 및 소셜 로그인 연동을 담당하는 원자적 도메인 서비스입니다.
+
+## 개요
+
+| 항목 | 설명 |
+|------|------|
+| **목적** | JWT 토큰 발급/검증 및 소셜 로그인(OAuth2) 연동 |
+| **주요 기능** | 소셜 로그인, JWT 발급/갱신, 계정 연동 관리 |
+| **특징** | 다중 소셜 계정 연동, 이메일 기반 계정 식별 |
+
+### 지원 소셜 로그인 제공자
+
+| Provider | 상태 | 패키지 |
+|----------|------|--------|
+| GitHub | ✅ 지원 | `laravel/socialite` (기본) |
+| Naver | ✅ 지원 | `socialiteproviders/naver` |
+| Kakao | ✅ 지원 | `socialiteproviders/kakao` |
+| Google | ⏳ 예정 | `laravel/socialite` (기본) |
+| Apple | ⏳ 예정 | `socialiteproviders/apple` |
+
+---
+
+## 시스템 아키텍처
+
+### 전체 서비스 흐름도
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              SERVICE ARCHITECTURE                                │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                 │
+│   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────────────────┐  │
+│   │  Front   │────▶│   BFF    │────▶│ Business │────▶│   Domain Service     │  │
+│   │  (SPA)   │◀────│  Layer   │◀────│  Layer   │◀────│   (toy-core-system)  │  │
+│   └──────────┘     └──────────┘     └──────────┘     └──────────────────────┘  │
+│        │                │                │                     │               │
+│        │                │                │                     │               │
+│   ┌────▼────┐      ┌────▼────┐     ┌────▼────┐          ┌─────▼─────┐         │
+│   │ JWT     │      │ JWT     │     │ JWT     │          │ JWT 발급  │         │
+│   │ 저장    │      │ 검증    │     │ 전달    │          │ 및 검증   │         │
+│   │(Storage)│      │ + 갱신  │     │         │          │           │         │
+│   └─────────┘      └─────────┘     └─────────┘          └───────────┘         │
+│                                                                                 │
+└─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 레이어별 역할
+
+```mermaid
+flowchart TB
+    subgraph Front["Front (SPA/Mobile)"]
+        F1[JWT 저장 및 관리]
+        F2[Authorization 헤더 첨부]
+        F3[토큰 만료 시 갱신 요청]
+    end
+
+    subgraph BFF["BFF Layer"]
+        B1[JWT 검증]
+        B2[사용자 컨텍스트 추출]
+        B3[토큰 갱신 처리]
+        B4[요청 라우팅]
+    end
+
+    subgraph Business["Business Layer"]
+        BS1[비즈니스 로직 처리]
+        BS2[사용자 권한 확인]
+        BS3[도메인 서비스 오케스트레이션]
+    end
+
+    subgraph Domain["Domain Service (Auth)"]
+        D1[JWT 발급]
+        D2[JWT 검증]
+        D3[소셜 로그인 처리]
+        D4[계정 연동 관리]
+    end
+
+    Front -->|"1. API 요청 + JWT"| BFF
+    BFF -->|"2. JWT 검증 요청"| Domain
+    Domain -->|"3. 검증 결과"| BFF
+    BFF -->|"4. 비즈니스 요청 + User Context"| Business
+    Business -->|"5. 도메인 로직 호출"| Domain
+    Domain -->|"6. 결과"| Business
+    Business -->|"7. 응답"| BFF
+    BFF -->|"8. 최종 응답"| Front
+```
+
+---
+
+## JWT 인증 흐름
+
+### 1. 소셜 로그인 → JWT 발급 흐름
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User as 사용자
+    participant Front as Front (SPA)
+    participant BFF as BFF Layer
+    participant Business as Business Layer
+    participant Domain as Domain Service
+    participant Social as Social Provider<br/>(GitHub/Naver/Kakao)
+    participant DB as Database
+
+    User->>Front: 1. 소셜 로그인 버튼 클릭
+    Front->>BFF: 2. GET /auth/{provider}/redirect
+    BFF->>Business: 3. 리다이렉트 URL 요청
+    Business->>Domain: 4. getRedirectUrl(provider)
+    Domain-->>Business: 5. OAuth URL
+    Business-->>BFF: 6. OAuth URL
+    BFF-->>Front: 7. Redirect URL
+    Front->>Social: 8. OAuth 인증 페이지로 이동
+
+    User->>Social: 9. 소셜 계정으로 로그인
+    Social-->>Front: 10. Callback (code, state)
+
+    Front->>BFF: 11. GET /auth/{provider}/callback?code=...
+    BFF->>Business: 12. 콜백 처리 요청
+    Business->>Domain: 13. handleCallback(provider, code)
+    Domain->>Social: 14. Access Token 교환
+    Social-->>Domain: 15. Access Token + User Info
+
+    Domain->>DB: 16. 사용자 조회/생성
+    Note over Domain,DB: 이메일 기준으로 기존 계정 확인<br/>없으면 새 계정 생성
+    DB-->>Domain: 17. User
+
+    Domain->>Domain: 18. JWT 생성
+    Note over Domain: Access Token (1시간)<br/>Refresh Token (7일)
+
+    Domain-->>Business: 19. JWT + User
+    Business-->>BFF: 20. JWT + User
+    BFF-->>Front: 21. JWT 응답
+
+    Front->>Front: 22. JWT 저장 (localStorage/Cookie)
+```
+
+### 2. API 요청 시 JWT 검증 흐름
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Front as Front (SPA)
+    participant BFF as BFF Layer
+    participant Business as Business Layer
+    participant Domain as Domain Service
+    participant Resource as Resource Domain<br/>(Timer/File/etc)
+
+    Front->>BFF: 1. API 요청<br/>Authorization: Bearer {JWT}
+
+    BFF->>Domain: 2. JWT 검증 요청
+    Domain->>Domain: 3. 토큰 파싱 및 검증
+
+    alt JWT 유효
+        Domain-->>BFF: 4a. 검증 성공 + User Claims
+        BFF->>BFF: 5. User Context 생성
+        BFF->>Business: 6. 비즈니스 요청 + User Context
+        Business->>Resource: 7. 도메인 로직 호출
+        Resource-->>Business: 8. 결과
+        Business-->>BFF: 9. 응답
+        BFF-->>Front: 10. 200 OK + Data
+    else JWT 만료
+        Domain-->>BFF: 4b. 토큰 만료
+        BFF-->>Front: 401 Unauthorized<br/>(TOKEN_EXPIRED)
+        Note over Front: Refresh Token으로 갱신 시도
+    else JWT 무효
+        Domain-->>BFF: 4c. 검증 실패
+        BFF-->>Front: 401 Unauthorized<br/>(INVALID_TOKEN)
+    end
+```
+
+### 3. JWT 토큰 갱신 흐름
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Front as Front (SPA)
+    participant BFF as BFF Layer
+    participant Business as Business Layer
+    participant Domain as Domain Service
+    participant DB as Database
+
+    Note over Front: Access Token 만료 감지
+
+    Front->>BFF: 1. POST /auth/refresh<br/>{ refresh_token: "..." }
+    BFF->>Business: 2. 토큰 갱신 요청
+    Business->>Domain: 3. refreshToken(refresh_token)
+
+    Domain->>Domain: 4. Refresh Token 검증
+
+    alt Refresh Token 유효
+        Domain->>DB: 5. 사용자 조회
+        DB-->>Domain: 6. User
+        Domain->>Domain: 7. 새 JWT 생성
+        Note over Domain: 새 Access Token (1시간)<br/>새 Refresh Token (7일)
+        Domain-->>Business: 8. 새 JWT
+        Business-->>BFF: 9. 새 JWT
+        BFF-->>Front: 10. 200 OK + 새 JWT
+        Front->>Front: 11. 새 JWT 저장
+    else Refresh Token 만료/무효
+        Domain-->>Business: 5b. 검증 실패
+        Business-->>BFF: 6b. 에러
+        BFF-->>Front: 401 Unauthorized<br/>(REFRESH_TOKEN_EXPIRED)
+        Note over Front: 재로그인 필요
+    end
+```
+
+---
+
+## 소셜 계정 연동 규칙
+
+### 계정 식별 및 연동 정책
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         계정 식별 기준: EMAIL                                │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  [회원가입 시 - 비로그인 상태]                                               │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  소셜 로그인 → 이메일 확인                                            │   │
+│  │       │                                                              │   │
+│  │       ├─▶ 동일 이메일 계정 존재 → 기존 계정에 소셜 연동               │   │
+│  │       │                                                              │   │
+│  │       └─▶ 이메일 없음 → 새 계정 생성 + 소셜 연동                      │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+│  [계정 연동 시 - 로그인 상태]                                                │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  소셜 로그인 → 현재 로그인된 계정에 연동 (이메일 무관)                  │   │
+│  │                                                                      │   │
+│  │  ※ 소셜 계정의 이메일이 달라도 현재 계정에 연동됨                      │   │
+│  │  ※ 이미 다른 계정에 연동된 소셜 계정은 연동 불가 (CONFLICT)            │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 회원가입 (비로그인 상태) 흐름
+
+```mermaid
+flowchart TD
+    A[소셜 로그인 시도] --> B{로그인 상태?}
+    B -->|비로그인| C[소셜 프로필 조회]
+    C --> D{이메일로 기존 계정 조회}
+
+    D -->|계정 존재| E{해당 소셜 계정<br/>이미 연동됨?}
+    E -->|Yes| F[기존 계정으로 로그인]
+    E -->|No| G[기존 계정에 소셜 연동 추가]
+    G --> F
+
+    D -->|계정 없음| H[새 계정 생성]
+    H --> I[소셜 계정 연동]
+    I --> J[새 계정으로 로그인]
+
+    F --> K[JWT 발급]
+    J --> K
+```
+
+### 계정 연동 (로그인 상태) 흐름
+
+```mermaid
+flowchart TD
+    A[소셜 계정 연동 시도] --> B{로그인 상태?}
+    B -->|로그인됨| C[소셜 프로필 조회]
+    C --> D{해당 소셜 계정이<br/>다른 계정에 연동됨?}
+
+    D -->|Yes| E[409 CONFLICT<br/>이미 다른 계정에 연동된 소셜 계정]
+
+    D -->|No| F{현재 계정에<br/>같은 Provider 연동됨?}
+    F -->|Yes| G[기존 연동 정보 업데이트]
+    F -->|No| H[새 소셜 연동 추가]
+
+    G --> I[연동 완료]
+    H --> I
+
+    B -->|비로그인| J[로그인 필요<br/>401 UNAUTHORIZED]
+```
+
+### 연동 시나리오 예시
+
+| 시나리오 | 상태 | 소셜 이메일 | 결과 |
+|----------|------|-------------|------|
+| GitHub 최초 로그인 | 비로그인 | user@gmail.com (신규) | 새 계정 생성 |
+| Kakao 로그인 | 비로그인 | user@gmail.com (기존) | 기존 계정에 Kakao 연동 |
+| Naver 연동 추가 | 로그인 (user@gmail.com) | other@naver.com | 현재 계정에 Naver 연동 |
+| GitHub 연동 시도 | 로그인 (user@gmail.com) | (이미 다른 계정에 연동됨) | 409 CONFLICT |
+
+---
+
+## 아키텍처
+
+### 레이어 구조
+
+```
+Controller (SocialAuthController)
+    ↓
+Service (SocialAuthService, JwtService)
+    ↓
+Repository Interface (SocialAccountRepositoryInterface, UserRepositoryInterface)
+    ↓
+├── EloquentSocialAccountRepository (DB 구현체)
+└── EloquentUserRepository (DB 구현체)
+        ↓
+    Database (PostgreSQL)
+```
+
+### 파일 구조
+
+```
+app/
+├── Domain/
+│   └── Auth/
+│       ├── Controllers/
+│       │   └── SocialAuthController.php          # 소셜 인증 컨트롤러
+│       ├── Services/
+│       │   ├── SocialAuthService.php             # 소셜 인증 비즈니스 로직
+│       │   └── JwtService.php                    # JWT 토큰 관리
+│       ├── Models/
+│       │   └── SocialAccount.php                 # 소셜 계정 모델
+│       ├── Repositories/
+│       │   ├── SocialAccountRepositoryInterface.php
+│       │   ├── EloquentSocialAccountRepository.php
+│       │   ├── UserRepositoryInterface.php
+│       │   └── EloquentUserRepository.php
+│       ├── DTOs/
+│       │   ├── SocialUserDTO.php                 # 소셜 사용자 정보
+│       │   └── TokenDTO.php                      # JWT 토큰 정보
+│       └── Exceptions/
+│           ├── SocialAccountAlreadyLinkedException.php
+│           └── InvalidTokenException.php
+│
+├── Models/
+│   └── User.php                                  # 사용자 모델 (수정)
+
+config/
+├── jwt.php                                       # JWT 설정
+└── services.php                                  # 소셜 Provider 설정
+
+database/migrations/
+├── xxxx_add_avatar_to_users_table.php
+└── xxxx_create_social_accounts_table.php
+
+tests/
+├── Feature/Auth/
+│   ├── SocialAuthControllerTest.php
+│   └── JwtAuthenticationTest.php
+└── Unit/Auth/
+    ├── SocialAuthServiceTest.php
+    └── JwtServiceTest.php
+```
+
+---
+
+## 데이터베이스 스키마
+
+### users 테이블 (수정)
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `id` | BIGINT | Primary Key |
+| `name` | VARCHAR(255) | 사용자 이름 |
+| `email` | VARCHAR(255) | 이메일 (UNIQUE) - **고유 식별자** |
+| `email_verified_at` | TIMESTAMP | 이메일 인증 시간 |
+| `password` | VARCHAR(255) | 비밀번호 (nullable - 소셜 전용 계정) |
+| `avatar` | VARCHAR(255) | 프로필 이미지 URL (nullable) |
+| `remember_token` | VARCHAR(100) | Remember Token |
+| `created_at` | TIMESTAMP | 생성 시간 |
+| `updated_at` | TIMESTAMP | 수정 시간 |
+
+### social_accounts 테이블 (신규)
+
+| 컬럼 | 타입 | 설명 |
+|------|------|------|
+| `id` | BIGINT | Primary Key |
+| `user_id` | BIGINT | FK → users.id |
+| `provider` | VARCHAR(50) | 소셜 제공자 (github, naver, kakao) |
+| `provider_user_id` | VARCHAR(255) | 소셜 서비스의 사용자 ID |
+| `provider_email` | VARCHAR(255) | 소셜 계정 이메일 (nullable) |
+| `provider_token` | TEXT | Access Token (nullable, encrypted) |
+| `provider_refresh_token` | TEXT | Refresh Token (nullable, encrypted) |
+| `token_expires_at` | TIMESTAMP | 토큰 만료 시간 (nullable) |
+| `created_at` | TIMESTAMP | 생성 시간 |
+| `updated_at` | TIMESTAMP | 수정 시간 |
+
+### 인덱스
+
+```sql
+-- social_accounts 테이블
+CREATE UNIQUE INDEX social_accounts_provider_user_unique
+    ON social_accounts (provider, provider_user_id);
+
+CREATE INDEX social_accounts_user_id_index
+    ON social_accounts (user_id);
+
+-- users 테이블
+CREATE UNIQUE INDEX users_email_unique ON users (email);
+```
+
+### ERD
+
+```
+┌─────────────────────────┐       ┌─────────────────────────────────┐
+│         users           │       │        social_accounts          │
+├─────────────────────────┤       ├─────────────────────────────────┤
+│ id (PK)                 │──┐    │ id (PK)                         │
+│ name                    │  │    │ user_id (FK)                    │──┐
+│ email (UNIQUE)          │  └───▶│ provider                        │  │
+│ email_verified_at       │       │ provider_user_id                │  │
+│ password (nullable)     │       │ provider_email                  │  │
+│ avatar (nullable)       │       │ provider_token                  │  │
+│ remember_token          │       │ provider_refresh_token          │  │
+│ created_at              │       │ token_expires_at                │  │
+│ updated_at              │       │ created_at                      │  │
+└─────────────────────────┘       │ updated_at                      │
+                                  └─────────────────────────────────┘
+
+        1                    :                    N
+      (User)              ────────────▶    (SocialAccounts)
+```
+
+---
+
+## API 엔드포인트
+
+### 소셜 로그인 리다이렉트
+
+```
+GET /api/auth/{provider}/redirect
+```
+
+**Path Parameters**
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `provider` | String | O | 소셜 제공자 (github, naver, kakao) |
+
+**응답 (200 OK)**
+```json
+{
+    "success": true,
+    "data": {
+        "redirect_url": "https://github.com/login/oauth/authorize?client_id=..."
+    }
+}
+```
+
+### 소셜 로그인 콜백
+
+```
+GET /api/auth/{provider}/callback
+```
+
+**Query Parameters**
+| 파라미터 | 타입 | 필수 | 설명 |
+|----------|------|------|------|
+| `code` | String | O | OAuth 인증 코드 |
+| `state` | String | O | CSRF 방지 state |
+
+**응답 (200 OK) - 로그인 성공**
+```json
+{
+    "success": true,
+    "data": {
+        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+        "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+        "token_type": "bearer",
+        "expires_in": 3600,
+        "user": {
+            "id": 1,
+            "name": "홍길동",
+            "email": "user@example.com",
+            "avatar": "https://avatars.githubusercontent.com/..."
+        }
+    }
+}
+```
+
+**에러 (400 Bad Request)**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "BAD_REQUEST",
+        "message": "지원하지 않는 소셜 로그인 제공자입니다: facebook"
+    }
+}
+```
+
+### 소셜 계정 연동 (로그인 상태)
+
+```
+POST /api/auth/{provider}/link
+```
+
+**Headers**
+```
+Authorization: Bearer {access_token}
+```
+
+**응답 (200 OK)**
+```json
+{
+    "success": true,
+    "data": {
+        "message": "소셜 계정이 연동되었습니다.",
+        "provider": "kakao",
+        "linked_at": "2025-12-11T10:00:00+09:00"
+    }
+}
+```
+
+**에러 (409 Conflict)**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "CONFLICT",
+        "message": "해당 소셜 계정은 이미 다른 계정에 연동되어 있습니다."
+    }
+}
+```
+
+### 소셜 계정 연동 해제
+
+```
+DELETE /api/auth/{provider}/unlink
+```
+
+**Headers**
+```
+Authorization: Bearer {access_token}
+```
+
+**응답 (200 OK)**
+```json
+{
+    "success": true,
+    "data": {
+        "message": "소셜 계정 연동이 해제되었습니다.",
+        "provider": "github"
+    }
+}
+```
+
+**에러 (400 Bad Request)**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "BAD_REQUEST",
+        "message": "마지막 로그인 수단은 해제할 수 없습니다."
+    }
+}
+```
+
+### JWT 토큰 갱신
+
+```
+POST /api/auth/refresh
+```
+
+**요청**
+```json
+{
+    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+}
+```
+
+**응답 (200 OK)**
+```json
+{
+    "success": true,
+    "data": {
+        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+        "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+        "token_type": "bearer",
+        "expires_in": 3600
+    }
+}
+```
+
+**에러 (401 Unauthorized)**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "UNAUTHORIZED",
+        "message": "Refresh Token이 만료되었습니다. 다시 로그인해주세요."
+    }
+}
+```
+
+### 로그아웃
+
+```
+POST /api/auth/logout
+```
+
+**Headers**
+```
+Authorization: Bearer {access_token}
+```
+
+**응답 (200 OK)**
+```json
+{
+    "success": true,
+    "data": {
+        "message": "로그아웃되었습니다."
+    }
+}
+```
+
+### 현재 사용자 정보
+
+```
+GET /api/auth/me
+```
+
+**Headers**
+```
+Authorization: Bearer {access_token}
+```
+
+**응답 (200 OK)**
+```json
+{
+    "success": true,
+    "data": {
+        "id": 1,
+        "name": "홍길동",
+        "email": "user@example.com",
+        "avatar": "https://avatars.githubusercontent.com/...",
+        "email_verified_at": "2025-12-11T10:00:00+09:00",
+        "created_at": "2025-12-01T09:00:00+09:00",
+        "social_accounts": [
+            {
+                "provider": "github",
+                "linked_at": "2025-12-01T09:00:00+09:00"
+            },
+            {
+                "provider": "kakao",
+                "linked_at": "2025-12-05T14:30:00+09:00"
+            }
+        ]
+    }
+}
+```
+
+### 연동된 소셜 계정 목록
+
+```
+GET /api/auth/social-accounts
+```
+
+**Headers**
+```
+Authorization: Bearer {access_token}
+```
+
+**응답 (200 OK)**
+```json
+{
+    "success": true,
+    "data": [
+        {
+            "provider": "github",
+            "provider_email": "user@github.com",
+            "linked_at": "2025-12-01T09:00:00+09:00"
+        },
+        {
+            "provider": "kakao",
+            "provider_email": "user@kakao.com",
+            "linked_at": "2025-12-05T14:30:00+09:00"
+        }
+    ]
+}
+```
+
+---
+
+## JWT 토큰 구조
+
+### Access Token Claims
+
+```json
+{
+    "iss": "toy-core-system",
+    "sub": "1",
+    "iat": 1702263600,
+    "exp": 1702267200,
+    "nbf": 1702263600,
+    "jti": "unique-token-id",
+    "type": "access",
+    "user": {
+        "id": 1,
+        "email": "user@example.com",
+        "name": "홍길동"
+    }
+}
+```
+
+### Refresh Token Claims
+
+```json
+{
+    "iss": "toy-core-system",
+    "sub": "1",
+    "iat": 1702263600,
+    "exp": 1702868400,
+    "nbf": 1702263600,
+    "jti": "unique-refresh-token-id",
+    "type": "refresh"
+}
+```
+
+### 토큰 만료 시간
+
+| 토큰 타입 | 만료 시간 | 용도 |
+|-----------|----------|------|
+| Access Token | 1시간 (3600초) | API 인증 |
+| Refresh Token | 7일 (604800초) | Access Token 갱신 |
+
+---
+
+## 예외 처리
+
+| 예외 | HTTP | 상황 |
+|------|------|------|
+| `UnauthorizedException` | 401 | JWT 토큰 없음/무효/만료 |
+| `ForbiddenException` | 403 | 권한 없음 |
+| `BadRequestException` | 400 | 지원하지 않는 Provider, 잘못된 요청 |
+| `ConflictException` | 409 | 소셜 계정이 이미 다른 계정에 연동됨 |
+| `NotFoundException` | 404 | 사용자/소셜 계정 없음 |
+| `ServiceUnavailableException` | 503 | 소셜 Provider 연결 실패 |
+
+### 에러 코드
+
+| Code | 설명 |
+|------|------|
+| `INVALID_TOKEN` | JWT 토큰이 유효하지 않음 |
+| `TOKEN_EXPIRED` | JWT 토큰 만료 |
+| `REFRESH_TOKEN_EXPIRED` | Refresh Token 만료 |
+| `SOCIAL_ACCOUNT_ALREADY_LINKED` | 소셜 계정이 이미 연동됨 |
+| `UNSUPPORTED_PROVIDER` | 지원하지 않는 소셜 Provider |
+| `SOCIAL_AUTH_FAILED` | 소셜 인증 실패 |
+
+---
+
+## 환경 설정
+
+### .env 예시
+
+```env
+# JWT
+JWT_SECRET=your-secret-key
+JWT_TTL=60
+JWT_REFRESH_TTL=10080
+
+# GitHub OAuth
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+GITHUB_REDIRECT_URI=https://your-domain.com/api/auth/github/callback
+
+# Naver OAuth
+NAVER_CLIENT_ID=your-naver-client-id
+NAVER_CLIENT_SECRET=your-naver-client-secret
+NAVER_REDIRECT_URI=https://your-domain.com/api/auth/naver/callback
+
+# Kakao OAuth
+KAKAO_CLIENT_ID=your-kakao-client-id
+KAKAO_CLIENT_SECRET=your-kakao-client-secret
+KAKAO_REDIRECT_URI=https://your-domain.com/api/auth/kakao/callback
+```
+
+---
+
+## 테스트 커버리지
+
+| 영역 | 테스트 수 | 파일 |
+|------|----------|------|
+| Feature (소셜 로그인) | - | `tests/Feature/Auth/SocialAuthControllerTest.php` |
+| Feature (JWT 인증) | - | `tests/Feature/Auth/JwtAuthenticationTest.php` |
+| Service Unit | - | `tests/Unit/Auth/SocialAuthServiceTest.php` |
+| JWT Unit | - | `tests/Unit/Auth/JwtServiceTest.php` |
+
+---
+
+## 참고 문서
+
+- [프로젝트 가이드](../CLAUDE.md)
+- [HTTP Response 공통화](../CLAUDE.md#http-response-공통화)
+- [Exception Handling 공통화](../CLAUDE.md#exception-handling-공통화)
+- [Laravel Socialite](https://laravel.com/docs/socialite)
+- [php-open-source-saver/jwt-auth](https://github.com/php-open-source-saver/jwt-auth)
