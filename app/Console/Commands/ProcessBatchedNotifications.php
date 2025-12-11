@@ -7,7 +7,6 @@ namespace App\Console\Commands;
 use App\Jobs\ProcessBatchedNotificationsJob;
 use App\Repositories\NotificationQueueRepositoryInterface;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\DB;
 
 class ProcessBatchedNotifications extends Command
 {
@@ -19,7 +18,7 @@ class ProcessBatchedNotifications extends Command
     {
         $this->info('묶음 알림 처리 시작...');
 
-        $groups = $this->getReadyBatchGroups();
+        $groups = $repository->getBatchedReadyGroups();
 
         if ($groups->isEmpty()) {
             $this->info('처리할 묶음 알림이 없습니다.');
@@ -41,22 +40,5 @@ class ProcessBatchedNotifications extends Command
         $this->info("완료: {$dispatched}개의 묶음 그룹이 발송 대기열에 추가되었습니다.");
 
         return Command::SUCCESS;
-    }
-
-    private function getReadyBatchGroups()
-    {
-        return DB::table('notification_queues')
-            ->select([
-                'batch_key',
-                DB::raw('MIN(batch_window) as batch_window'),
-                DB::raw('MIN(created_at) as first_created_at'),
-                DB::raw('COUNT(*) as count'),
-            ])
-            ->where('dispatch_type', 'batched')
-            ->where('status', 'pending')
-            ->whereNotNull('batch_key')
-            ->groupBy('batch_key')
-            ->havingRaw('TIMESTAMPDIFF(SECOND, MIN(created_at), NOW()) >= MIN(batch_window)')
-            ->get();
     }
 }
