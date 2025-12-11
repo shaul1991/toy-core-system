@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Auth\Controllers\AuthController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\TimerController;
@@ -47,4 +48,24 @@ Route::prefix('notifications')->group(function () {
     // 알림 로그
     Route::get('logs', [NotificationController::class, 'indexLogs']);
     Route::get('logs/{id}', [NotificationController::class, 'showLog']);
+});
+
+/*
+|--------------------------------------------------------------------------
+| Auth Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('auth')->group(function () {
+    // 공개 엔드포인트
+    Route::post('refresh', [AuthController::class, 'refresh'])
+        ->middleware('throttle:30,1');
+
+    Route::post('validate', [AuthController::class, 'validate']);
+
+    // 인증 필요 엔드포인트
+    Route::middleware(['auth:api', 'throttle:60,1'])->group(function () {
+        Route::get('me', [AuthController::class, 'me']);
+        Route::post('logout', [AuthController::class, 'logout']);
+        Route::post('logout-all', [AuthController::class, 'logoutAll']);
+    });
 });

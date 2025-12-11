@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Domain\Auth\Repositories\RedisRefreshTokenRepository;
+use App\Domain\Auth\Repositories\RefreshTokenRepositoryInterface;
 use App\Repositories\CachedFileRepository;
 use App\Repositories\CachedTimerRepository;
 use App\Repositories\EloquentNotificationLogRepository;
@@ -26,6 +28,12 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        // Auth - RefreshToken Repository
+        $this->app->bind(
+            RefreshTokenRepositoryInterface::class,
+            RedisRefreshTokenRepository::class
+        );
+
         // EloquentTimerRepository를 싱글톤으로 등록
         $this->app->singleton(EloquentTimerRepository::class);
 
