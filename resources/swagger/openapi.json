@@ -1742,7 +1742,7 @@
                 }
               }
             },
-            "required": ["access_token", "refresh_token", "token_type", "expires_in"]
+            "required": ["access_token", "refresh_token", "token_type", "expires_in", "user"]
           }
         },
         "required": ["success", "data"]
@@ -1828,7 +1828,8 @@
                 }
               },
               "required": ["provider", "linked_at"]
-            }
+            },
+            "maxItems": 10
           }
         },
         "required": ["success", "data"]
