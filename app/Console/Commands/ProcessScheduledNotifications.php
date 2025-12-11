@@ -17,7 +17,7 @@ class ProcessScheduledNotifications extends Command
 
     public function handle(NotificationQueueRepositoryInterface $repository): int
     {
-        $limit = (int) $this->option('limit');
+        $limit = max(1, (int) $this->option('limit'));
 
         $this->info('예약 알림 처리 시작...');
 
