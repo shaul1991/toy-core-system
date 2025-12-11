@@ -8,6 +8,7 @@ use App\Enums\Notification\DispatchType;
 use App\Enums\Notification\NotificationStatus;
 use App\Models\NotificationQueue;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 class EloquentNotificationQueueRepository implements NotificationQueueRepositoryInterface
@@ -54,11 +55,22 @@ class EloquentNotificationQueueRepository implements NotificationQueueRepository
 
     public function getBatchedReadyGroups(): Collection
     {
-        return NotificationQueue::batchedReady()
+        $now = now();
+
+        return NotificationQueue::query()
+            ->where('dispatch_type', DispatchType::BATCHED)
+            ->where('status', NotificationStatus::PENDING)
+            ->whereNotNull('batch_key')
             ->selectRaw('batch_key, MIN(batch_window) as batch_window, MIN(created_at) as first_created_at, COUNT(*) as count')
             ->groupBy('batch_key')
-            ->havingRaw('TIMESTAMPDIFF(SECOND, MIN(created_at), NOW()) >= MIN(batch_window)')
-            ->get();
+            ->get()
+            ->filter(function ($group) use ($now) {
+                $firstCreatedAt = Carbon::parse($group->first_created_at);
+                $readyAt = $firstCreatedAt->addSeconds((int) $group->batch_window);
+
+                return $readyAt->lte($now);
+            })
+            ->values();
     }
 
     public function getByBatchKey(string $batchKey): Collection
