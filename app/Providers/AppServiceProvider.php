@@ -19,7 +19,11 @@ use App\Services\Notification\Channels\EmailChannel;
 use App\Services\Notification\Channels\SlackChannel;
 use App\Services\Notification\Channels\SmsChannel;
 use App\Services\Notification\NotificationDispatcher;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
+use SocialiteProviders\Kakao\KakaoExtendSocialite;
+use SocialiteProviders\Manager\SocialiteWasCalled;
+use SocialiteProviders\Naver\NaverExtendSocialite;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -97,6 +101,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Socialite 확장 프로바이더 등록 (Naver, Kakao)
+        Event::listen(SocialiteWasCalled::class, NaverExtendSocialite::class.'@handle');
+        Event::listen(SocialiteWasCalled::class, KakaoExtendSocialite::class.'@handle');
     }
 }
