@@ -24,9 +24,10 @@ trait ApiResponsable
 
     protected function paginatedResponse(
         LengthAwarePaginator|CursorPaginator $paginator,
+        ?callable $transformer = null,
         ?string $message = null
     ): JsonResponse {
-        return ApiResponse::paginated($paginator, $message)->toResponse();
+        return ApiResponse::paginated($paginator, $transformer, $message)->toResponse();
     }
 
     protected function errorResponse(

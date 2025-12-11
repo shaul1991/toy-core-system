@@ -66,6 +66,14 @@ class FileController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        // metadata가 JSON 문자열로 전달된 경우 배열로 변환
+        if ($request->has('metadata') && is_string($request->input('metadata'))) {
+            $decoded = json_decode($request->input('metadata'), true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $request->merge(['metadata' => $decoded]);
+            }
+        }
+
         $validated = $request->validate([
             'file' => ['required', 'file', 'max:102400'], // 100MB
             'visibility' => ['sometimes', 'string', 'in:public,private'],

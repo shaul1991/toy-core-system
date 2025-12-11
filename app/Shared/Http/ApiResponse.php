@@ -70,11 +70,17 @@ final class ApiResponse
 
     public static function paginated(
         LengthAwarePaginator|CursorPaginator $paginator,
+        ?callable $transformer = null,
         ?string $message = null
     ): self {
         $response = new self;
         $response->success = true;
-        $response->data = $paginator->items();
+
+        $items = $paginator->items();
+        $response->data = $transformer !== null
+            ? array_map($transformer, $items)
+            : $items;
+
         $response->message = $message;
         $response->code = ApiResponseCode::SUCCESS;
 
