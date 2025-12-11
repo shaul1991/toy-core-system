@@ -51,11 +51,14 @@ class ProcessBatchedNotificationsJob implements ShouldBeUnique, ShouldQueue
         $dispatcher->dispatchBatch($queues);
     }
 
-    public function failed(?Throwable $exception): void
+    public function failed(Throwable $exception): void
     {
+        $errorMessage = mb_substr($exception->getMessage(), 0, 1000);
+
         Log::error('Batched notification job failed', [
             'batch_key' => $this->batchKey,
-            'error' => $exception?->getMessage(),
+            'exception' => get_class($exception),
+            'error' => $errorMessage,
         ]);
 
         $queueRepository = app(NotificationQueueRepositoryInterface::class);
@@ -63,7 +66,7 @@ class ProcessBatchedNotificationsJob implements ShouldBeUnique, ShouldQueue
 
         foreach ($queues as $queue) {
             if (! $queue->status->isTerminal()) {
-                $queueRepository->markAsFailed($queue, $exception?->getMessage() ?? 'Unknown error');
+                $queueRepository->markAsFailed($queue, $errorMessage);
             }
         }
     }

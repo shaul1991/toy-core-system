@@ -181,7 +181,8 @@ class EmailChannel implements NotificationChannelInterface
 
         if (isset($aggregatedPayload['items'])) {
             foreach ($aggregatedPayload['items'] as $index => $item) {
-                $lines[] = ($index + 1).'. '.($item['message'] ?? json_encode($item));
+                $itemMessage = $item['message'] ?? $item['title'] ?? $item['summary'] ?? '알림 항목';
+                $lines[] = ($index + 1).'. '.$itemMessage;
             }
         }
 

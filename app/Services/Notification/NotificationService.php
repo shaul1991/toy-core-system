@@ -136,6 +136,17 @@ class NotificationService
         return $this->logRepository->findById($logId);
     }
 
+    public function getLogOrFail(int $logId): NotificationLog
+    {
+        $log = $this->logRepository->findById($logId);
+
+        if ($log === null) {
+            throw NotificationException::logNotFound($logId);
+        }
+
+        return $log;
+    }
+
     public function paginateLogs(
         ?NotificationStatus $status = null,
         ?string $type = null,

@@ -33,6 +33,14 @@ class NotificationException extends DomainException
         return $exception->withDetails(['queue_id' => $queueId]);
     }
 
+    public static function logNotFound(int $logId): static
+    {
+        $exception = new static("알림 로그를 찾을 수 없습니다: {$logId}");
+        $exception->responseCode = ApiResponseCode::NOT_FOUND;
+
+        return $exception->withDetails(['log_id' => $logId]);
+    }
+
     public static function cannotCancel(int $queueId, string $status): static
     {
         return (new static('이 상태에서는 알림을 취소할 수 없습니다.'))

@@ -227,4 +227,65 @@ class NotificationQueueTest extends TestCase
 
         $this->assertCount(1, $ready);
     }
+
+    public function test_scope_batched_ready(): void
+    {
+        // pending 상태인 배치 알림
+        NotificationQueue::create([
+            'dispatch_type' => DispatchType::BATCHED,
+            'batch_key' => 'user:1:activity',
+            'batch_window' => 3600,
+            'type' => 'test',
+            'channels' => ['email'],
+            'recipient' => ['email' => 'test@example.com'],
+            'payload' => [],
+            'status' => NotificationStatus::PENDING,
+        ]);
+
+        // 이미 발송된 배치 알림
+        NotificationQueue::create([
+            'dispatch_type' => DispatchType::BATCHED,
+            'batch_key' => 'user:1:activity',
+            'batch_window' => 3600,
+            'type' => 'test',
+            'channels' => ['email'],
+            'recipient' => ['email' => 'test@example.com'],
+            'payload' => [],
+            'status' => NotificationStatus::DISPATCHED,
+        ]);
+
+        $ready = NotificationQueue::batchedReady()->get();
+
+        $this->assertCount(1, $ready);
+    }
+
+    public function test_scope_by_batch_key(): void
+    {
+        NotificationQueue::create([
+            'dispatch_type' => DispatchType::BATCHED,
+            'batch_key' => 'user:1:activity',
+            'batch_window' => 3600,
+            'type' => 'test',
+            'channels' => ['email'],
+            'recipient' => ['email' => 'test@example.com'],
+            'payload' => [],
+            'status' => NotificationStatus::PENDING,
+        ]);
+
+        NotificationQueue::create([
+            'dispatch_type' => DispatchType::BATCHED,
+            'batch_key' => 'user:2:activity',
+            'batch_window' => 3600,
+            'type' => 'test',
+            'channels' => ['email'],
+            'recipient' => ['email' => 'test2@example.com'],
+            'payload' => [],
+            'status' => NotificationStatus::PENDING,
+        ]);
+
+        $queues = NotificationQueue::byBatchKey('user:1:activity')->get();
+
+        $this->assertCount(1, $queues);
+        $this->assertEquals('user:1:activity', $queues->first()->batch_key);
+    }
 }

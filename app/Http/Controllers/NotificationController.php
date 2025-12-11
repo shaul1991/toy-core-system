@@ -89,8 +89,8 @@ class NotificationController extends Controller
             ? NotificationStatus::tryFrom($request->input('status'))
             : null;
 
-        $from = $request->input('from') ? Carbon::parse($request->input('from')) : null;
-        $to = $request->input('to') ? Carbon::parse($request->input('to')) : null;
+        $from = $request->date('from');
+        $to = $request->date('to');
 
         $logs = $this->notificationService->paginateLogs(
             status: $status,
@@ -108,11 +108,7 @@ class NotificationController extends Controller
 
     public function showLog(int $id): JsonResponse
     {
-        $log = $this->notificationService->getLog($id);
-
-        if ($log === null) {
-            return $this->notFoundResponse('알림 로그를 찾을 수 없습니다.');
-        }
+        $log = $this->notificationService->getLogOrFail($id);
 
         return $this->successResponse($this->formatLog($log));
     }
