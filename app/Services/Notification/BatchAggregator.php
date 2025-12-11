@@ -48,7 +48,10 @@ class BatchAggregator
             if (isset($item['activity'])) {
                 $activities[] = $item['activity'];
             } elseif (isset($item['activities'])) {
-                $activities = array_merge($activities, $item['activities']);
+                // array_merge/spread 대신 foreach 사용으로 O(n²) 방지
+                foreach ($item['activities'] as $activity) {
+                    $activities[] = $activity;
+                }
             } else {
                 $activities[] = $item;
             }
