@@ -496,15 +496,17 @@ GET /api/auth/{provider}/callback
 | 파라미터 | 타입 | 필수 | 설명 |
 |----------|------|------|------|
 | `code` | String | O | OAuth 인증 코드 |
-| `state` | String | O | CSRF 방지 state |
+| `state` | String | - | CSRF 방지 state (stateless 모드에서는 선택적) |
+
+> **Note**: 이 API는 Laravel Socialite의 stateless 모드를 사용하므로 state 파라미터 검증을 서버에서 수행하지 않습니다. CSRF 보호는 클라이언트에서 처리해야 합니다.
 
 **응답 (200 OK) - 로그인 성공**
 ```json
 {
     "success": true,
     "data": {
-        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-        "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+        "access_token": "<ACCESS_TOKEN_EXAMPLE>",
+        "refresh_token": "<REFRESH_TOKEN_EXAMPLE>",
         "token_type": "bearer",
         "expires_in": 3600,
         "user": {
@@ -604,7 +606,7 @@ POST /api/auth/refresh
 **요청**
 ```json
 {
-    "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+    "refresh_token": "<REFRESH_TOKEN_EXAMPLE>"
 }
 ```
 
@@ -613,8 +615,8 @@ POST /api/auth/refresh
 {
     "success": true,
     "data": {
-        "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-        "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+        "access_token": "<ACCESS_TOKEN_EXAMPLE>",
+        "refresh_token": "<REFRESH_TOKEN_EXAMPLE>",
         "token_type": "bearer",
         "expires_in": 3600
     }
