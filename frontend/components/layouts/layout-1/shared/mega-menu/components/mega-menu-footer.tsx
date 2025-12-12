@@ -13,12 +13,12 @@ const MegaMenuFooter = () => {
           Take your docs to the next level of Metronic
         </div>
       </div>
-      <NavigationMenuLink>
-        <Button variant="mono" asChild>
-          <Link href="https://keenthemes.com/metronic" target="_blank">
-            Read Documentation
-          </Link>
-        </Button>
+      <NavigationMenuLink asChild>
+        <Link href="https://keenthemes.com/metronic" target="_blank">
+          <Button variant="mono" asChild>
+            <span>Read Documentation</span>
+          </Button>
+        </Link>
       </NavigationMenuLink>
     </div>
   );
