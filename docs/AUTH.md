@@ -1,14 +1,16 @@
 # Auth 도메인
 
-Auth 도메인은 JWT 기반 인증/인가 및 소셜 로그인 연동을 담당하는 원자적 도메인 서비스입니다.
+Auth 도메인은 JWT 토큰 발급 및 소셜 로그인 연동을 담당하는 원자적 도메인 서비스입니다.
 
 ## 개요
 
 | 항목 | 설명 |
 |------|------|
-| **목적** | JWT 토큰 발급/검증 및 소셜 로그인(OAuth2) 연동 |
+| **목적** | JWT 토큰 발급/갱신 및 소셜 로그인(OAuth2) 연동 |
 | **주요 기능** | 소셜 로그인, JWT 발급/갱신, 계정 연동 관리 |
 | **특징** | 다중 소셜 계정 연동, 이메일 기반 계정 식별 |
+
+> **Note**: JWT 검증은 BFF/Aggregator에서 수행하며, Domain Service는 `X-User-Id` 헤더로 사용자 ID만 전달받습니다.
 
 ### 지원 소셜 로그인 제공자
 
@@ -38,10 +40,12 @@ Auth 도메인은 JWT 기반 인증/인가 및 소셜 로그인 연동을 담당
 │        │                │                │                     │               │
 │        │                │                │                     │               │
 │   ┌────▼────┐      ┌────▼────┐     ┌────▼────┐          ┌─────▼─────┐         │
-│   │ JWT     │      │ JWT     │     │ JWT     │          │ JWT 발급  │         │
-│   │ 저장    │      │ 검증    │     │ 전달    │          │ 및 검증   │         │
-│   │(Storage)│      │ + 갱신  │     │         │          │           │         │
+│   │ JWT     │      │ JWT     │     │X-User-Id│          │ JWT 발급  │         │
+│   │ 저장    │      │ 검증    │     │ 헤더    │          │ + 갱신    │         │
+│   │(Storage)│      │ ⭐      │     │ 전달    │          │           │         │
 │   └─────────┘      └─────────┘     └─────────┘          └───────────┘         │
+│                                                                                 │
+│   ⭐ JWT 검증은 BFF/Aggregator에서 수행                                          │
 │                                                                                 │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -56,11 +60,11 @@ flowchart TB
         F3[토큰 만료 시 갱신 요청]
     end
 
-    subgraph BFF["BFF Layer"]
+    subgraph BFF["BFF Layer ⭐ JWT 검증"]
         B1[JWT 검증]
-        B2[사용자 컨텍스트 추출]
+        B2[사용자 ID 추출]
         B3[토큰 갱신 처리]
-        B4[요청 라우팅]
+        B4[X-User-Id 헤더 설정]
     end
 
     subgraph Business["Business Layer"]
@@ -70,20 +74,19 @@ flowchart TB
     end
 
     subgraph Domain["Domain Service (Auth)"]
-        D1[JWT 발급]
-        D2[JWT 검증]
-        D3[소셜 로그인 처리]
-        D4[계정 연동 관리]
+        D1[JWT 발급/갱신]
+        D2[소셜 로그인 처리]
+        D3[계정 연동 관리]
+        D4[X-User-Id 헤더 수신]
     end
 
     Front -->|"1. API 요청 + JWT"| BFF
-    BFF -->|"2. JWT 검증 요청"| Domain
-    Domain -->|"3. 검증 결과"| BFF
-    BFF -->|"4. 비즈니스 요청 + User Context"| Business
-    Business -->|"5. 도메인 로직 호출"| Domain
-    Domain -->|"6. 결과"| Business
-    Business -->|"7. 응답"| BFF
-    BFF -->|"8. 최종 응답"| Front
+    BFF -->|"2. JWT 검증 (자체 수행)"| BFF
+    BFF -->|"3. X-User-Id 헤더 + 요청"| Business
+    Business -->|"4. X-User-Id 헤더 + 도메인 호출"| Domain
+    Domain -->|"5. 결과"| Business
+    Business -->|"6. 응답"| BFF
+    BFF -->|"7. 최종 응답"| Front
 ```
 
 ---
@@ -544,8 +547,10 @@ POST /api/auth/{provider}/link
 
 **Headers**
 ```
-Authorization: Bearer {access_token}
+X-User-Id: {user_id}
 ```
+
+> **Note**: BFF에서 JWT 검증 후 사용자 ID를 `X-User-Id` 헤더로 전달합니다.
 
 **응답 (200 OK)**
 ```json
@@ -578,7 +583,7 @@ DELETE /api/auth/{provider}/unlink
 
 **Headers**
 ```
-Authorization: Bearer {access_token}
+X-User-Id: {user_id}
 ```
 
 **응답 (200 OK)**
@@ -648,8 +653,17 @@ POST /api/auth/logout
 
 **Headers**
 ```
-Authorization: Bearer {access_token}
+X-User-Id: {user_id}
 ```
+
+**Request Body (optional)**
+```json
+{
+    "refresh_token": "<REFRESH_TOKEN_EXAMPLE>"
+}
+```
+
+> **Note**: Access Token은 BFF에서 관리합니다. Domain Service에서는 Refresh Token만 무효화합니다.
 
 **응답 (200 OK)**
 ```json
@@ -669,7 +683,7 @@ POST /api/auth/logout-all
 
 **Headers**
 ```
-Authorization: Bearer {access_token}
+X-User-Id: {user_id}
 ```
 
 **응답 (200 OK)**
@@ -682,13 +696,13 @@ Authorization: Bearer {access_token}
 }
 ```
 
-**에러 (401 Unauthorized)**
+**에러 (400 Bad Request)**
 ```json
 {
     "success": false,
     "error": {
-        "code": "UNAUTHORIZED",
-        "message": "인증이 필요합니다."
+        "code": "BAD_REQUEST",
+        "message": "X-User-Id 헤더가 필요합니다."
     }
 }
 ```
@@ -749,7 +763,7 @@ GET /api/auth/me
 
 **Headers**
 ```
-Authorization: Bearer {access_token}
+X-User-Id: {user_id}
 ```
 
 **응답 (200 OK)**
@@ -785,7 +799,7 @@ GET /api/auth/social-accounts
 
 **Headers**
 ```
-Authorization: Bearer {access_token}
+X-User-Id: {user_id}
 ```
 
 **응답 (200 OK)**
@@ -1135,8 +1149,8 @@ Route::prefix('auth')->group(function () {
     Route::post('refresh', [SocialAuthController::class, 'refresh'])
         ->middleware('throttle:30,1'); // 30회/분
 
-    // 인증 필요 엔드포인트
-    Route::middleware(['auth:api', 'throttle:60,1'])->group(function () {
+    // 사용자 ID 필요 엔드포인트 (BFF에서 JWT 검증 후 X-User-Id 헤더로 전달)
+    Route::middleware(['user.id', 'throttle:60,1'])->group(function () {
         Route::get('me', [SocialAuthController::class, 'me']);
         Route::post('logout', [SocialAuthController::class, 'logout']);
         Route::post('{provider}/link', [SocialAuthController::class, 'link'])
@@ -1144,6 +1158,8 @@ Route::prefix('auth')->group(function () {
     });
 });
 ```
+
+> **Note**: `user.id` 미들웨어는 `X-User-Id` 헤더에서 사용자 ID를 추출합니다. JWT 검증은 BFF에서 수행됩니다.
 
 #### Rate Limit 응답
 

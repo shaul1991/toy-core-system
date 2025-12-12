@@ -83,8 +83,8 @@ Route::prefix('auth')->group(function () {
 
     Route::post('validate', [AuthController::class, 'validate']);
 
-    // 인증 필요 엔드포인트
-    Route::middleware('auth:api')->group(function () {
+    // 사용자 ID 필요 엔드포인트 (BFF에서 JWT 검증 후 X-User-Id 헤더로 전달)
+    Route::middleware('user.id')->group(function () {
         // 사용자 정보 조회 - 60회/분
         Route::get('me', [AuthController::class, 'me'])
             ->middleware('throttle:60,1');
@@ -116,7 +116,7 @@ Route::prefix('auth')->group(function () {
 | User Activity Routes
 |--------------------------------------------------------------------------
 */
-Route::prefix('user-activity')->middleware('auth:api')->group(function () {
+Route::prefix('user-activity')->middleware('user.id:optional')->group(function () {
     // CRUD 기본 엔드포인트
     Route::get('/', [UserActivityController::class, 'index']);
     Route::post('/', [UserActivityController::class, 'store']);
