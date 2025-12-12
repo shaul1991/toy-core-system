@@ -30,6 +30,21 @@ trait ApiResponsable
         return ApiResponse::paginated($paginator, $transformer, $message)->toResponse();
     }
 
+    protected function paginatedArrayResponse(
+        array $data,
+        int $total,
+        int $page,
+        int $perPage,
+        ?string $message = null
+    ): JsonResponse {
+        return ApiResponse::paginatedArray($data, $total, $page, $perPage, $message)->toResponse();
+    }
+
+    protected function deletedResponse(?string $message = null): JsonResponse
+    {
+        return ApiResponse::deleted($message)->toResponse();
+    }
+
     protected function errorResponse(
         ApiResponseCode $code,
         ?string $message = null,
