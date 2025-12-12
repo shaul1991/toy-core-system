@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Providers;
 
+use App\Domain\Health\Checkers\MinioHealthChecker;
+use App\Domain\Health\Checkers\MongoDbHealthChecker;
 use App\Domain\Health\Checkers\PostgresHealthChecker;
 use App\Domain\Health\Checkers\RedisHealthChecker;
 use App\Domain\Health\Services\HealthCheckService;
@@ -30,10 +32,25 @@ class HealthServiceProvider extends ServiceProvider
                 ));
             }
 
-            // 추후 MongoDB, Kafka 등 추가 시 여기에 등록
-            // if (config('health.checkers.mongodb.enabled', false)) {
-            //     $service->register(new MongoDbHealthChecker(...));
-            // }
+            // MongoDB Health Checker 등록
+            if (config('health.checkers.mongodb.enabled', false)) {
+                $service->register(new MongoDbHealthChecker(
+                    host: config('health.checkers.mongodb.host'),
+                    port: (int) config('health.checkers.mongodb.port', 27017),
+                    database: config('health.checkers.mongodb.database', 'admin'),
+                    username: config('health.checkers.mongodb.username'),
+                    password: config('health.checkers.mongodb.password'),
+                ));
+            }
+
+            // MinIO Health Checker 등록
+            if (config('health.checkers.minio.enabled', false)) {
+                $service->register(new MinioHealthChecker(
+                    disk: config('health.checkers.minio.disk', 'minio-public'),
+                ));
+            }
+
+            // 추후 Kafka 등 추가 시 여기에 등록
 
             return $service;
         });

@@ -6,7 +6,7 @@ Health 도메인은 서비스 연결 상태 확인을 담당하는 원자적 도
 
 | 항목 | 설명 |
 |------|------|
-| **목적** | PostgreSQL, Redis 등 외부 서비스 연결 상태 모니터링 |
+| **목적** | PostgreSQL, Redis, MongoDB, MinIO 등 외부 서비스 연결 상태 모니터링 |
 | **주요 기능** | 전체/개별 서비스 Health Check, 응답 시간 측정 |
 | **특징** | 확장 가능한 Checker 패턴, 설정 기반 활성화 |
 
@@ -23,7 +23,9 @@ Checker Interface (HealthCheckerInterface)
     ↓
 ├── PostgresHealthChecker
 ├── RedisHealthChecker
-└── (확장 가능: MongoDbHealthChecker, KafkaHealthChecker 등)
+├── MongoDbHealthChecker
+├── MinioHealthChecker
+└── (확장 가능: KafkaHealthChecker 등)
 ```
 
 ### 파일 구조
@@ -34,7 +36,9 @@ app/Domain/Health/
 │   └── HealthCheckerInterface.php          # Checker 인터페이스
 ├── Checkers/
 │   ├── PostgresHealthChecker.php           # PostgreSQL 연결 확인
-│   └── RedisHealthChecker.php              # Redis 연결 확인
+│   ├── RedisHealthChecker.php              # Redis 연결 확인
+│   ├── MongoDbHealthChecker.php            # MongoDB 연결 확인
+│   └── MinioHealthChecker.php              # MinIO 연결 확인
 ├── DTOs/
 │   └── HealthCheckResult.php               # Health Check 결과 DTO
 ├── Services/
@@ -50,10 +54,11 @@ config/
 
 tests/
 ├── Unit/Domain/Health/
-│   ├── DTOs/HealthCheckResultTest.php      # DTO Unit 테스트
-│   └── Services/HealthCheckServiceTest.php # Service Unit 테스트
+│   ├── Checkers/MongoDbHealthCheckerTest.php # MongoDB Checker 테스트
+│   ├── DTOs/HealthCheckResultTest.php        # DTO Unit 테스트
+│   └── Services/HealthCheckServiceTest.php   # Service Unit 테스트
 └── Feature/Domain/Health/
-    └── HealthControllerTest.php            # Feature 테스트
+    └── HealthControllerTest.php              # Feature 테스트
 ```
 
 ## 설정
@@ -71,11 +76,18 @@ return [
             'enabled' => env('HEALTH_CHECK_REDIS_ENABLED', true),
             'connection' => env('HEALTH_CHECK_REDIS_CONNECTION', 'default'),
         ],
-        // 추후 추가 예정
-        // 'mongodb' => [
-        //     'enabled' => env('HEALTH_CHECK_MONGODB_ENABLED', false),
-        //     'connection' => env('HEALTH_CHECK_MONGODB_CONNECTION', 'mongodb'),
-        // ],
+        'mongodb' => [
+            'enabled' => env('HEALTH_CHECK_MONGODB_ENABLED', true),
+            'host' => env('MONGODB_HOST'),
+            'port' => env('MONGODB_PORT', 27017),
+            'database' => env('MONGODB_DATABASE', 'admin'),
+            'username' => env('MONGODB_USERNAME'),
+            'password' => env('MONGODB_PASSWORD'),
+        ],
+        'minio' => [
+            'enabled' => env('HEALTH_CHECK_MINIO_ENABLED', true),
+            'disk' => env('HEALTH_CHECK_MINIO_DISK', 'minio-public'),
+        ],
     ],
 ];
 ```
@@ -88,6 +100,14 @@ return [
 | `HEALTH_CHECK_POSTGRES_CONNECTION` | `pgsql` | PostgreSQL 연결 이름 |
 | `HEALTH_CHECK_REDIS_ENABLED` | `true` | Redis 체크 활성화 |
 | `HEALTH_CHECK_REDIS_CONNECTION` | `default` | Redis 연결 이름 |
+| `HEALTH_CHECK_MONGODB_ENABLED` | `true` | MongoDB 체크 활성화 |
+| `MONGODB_HOST` | - | MongoDB 호스트 |
+| `MONGODB_PORT` | `27017` | MongoDB 포트 |
+| `MONGODB_DATABASE` | `admin` | MongoDB 데이터베이스 |
+| `MONGODB_USERNAME` | - | MongoDB 사용자명 |
+| `MONGODB_PASSWORD` | - | MongoDB 비밀번호 |
+| `HEALTH_CHECK_MINIO_ENABLED` | `true` | MinIO 체크 활성화 |
+| `HEALTH_CHECK_MINIO_DISK` | `minio-public` | MinIO 디스크 이름 |
 
 ## API 엔드포인트
 
@@ -367,8 +387,10 @@ if (config('health.checkers.mongodb.enabled', false)) {
 |------|----------|------|
 | DTO Unit | 6개 | `tests/Unit/Domain/Health/DTOs/HealthCheckResultTest.php` |
 | Service Unit | 9개 | `tests/Unit/Domain/Health/Services/HealthCheckServiceTest.php` |
+| MongoDB Checker Unit | 5개 | `tests/Unit/Domain/Health/Checkers/MongoDbHealthCheckerTest.php` |
+| MinIO Checker Unit | 2개 | `tests/Unit/Domain/Health/Checkers/MinioHealthCheckerTest.php` |
 | Feature (API) | 7개 | `tests/Feature/Domain/Health/HealthControllerTest.php` |
-| **총합** | **22개** | |
+| **총합** | **29개** | |
 
 ## 예외 처리
 

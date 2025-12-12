@@ -22,12 +22,21 @@ return [
             'connection' => env('HEALTH_CHECK_REDIS_CONNECTION', 'default'),
         ],
 
-        // 추후 추가 예정
-        // 'mongodb' => [
-        //     'enabled' => env('HEALTH_CHECK_MONGODB_ENABLED', false),
-        //     'connection' => env('HEALTH_CHECK_MONGODB_CONNECTION', 'mongodb'),
-        // ],
+        'mongodb' => [
+            'enabled' => env('HEALTH_CHECK_MONGODB_ENABLED', true),
+            'host' => env('MONGODB_HOST'),
+            'port' => env('MONGODB_PORT', 27017),
+            'database' => env('MONGODB_DATABASE', 'admin'),
+            'username' => env('MONGODB_USERNAME'),
+            'password' => env('MONGODB_PASSWORD'),
+        ],
 
+        'minio' => [
+            'enabled' => env('HEALTH_CHECK_MINIO_ENABLED', true),
+            'disk' => env('HEALTH_CHECK_MINIO_DISK', 'minio-public'),
+        ],
+
+        // 추후 추가 예정
         // 'kafka' => [
         //     'enabled' => env('HEALTH_CHECK_KAFKA_ENABLED', false),
         //     'brokers' => env('HEALTH_CHECK_KAFKA_BROKERS', 'localhost:9092'),
