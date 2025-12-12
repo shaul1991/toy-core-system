@@ -2,6 +2,7 @@
 
 use App\Domain\Auth\Controllers\AuthController;
 use App\Domain\Auth\Controllers\SocialAuthController;
+use App\Domain\Health\Controllers\HealthController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\TimerController;
@@ -17,6 +18,16 @@ use Illuminate\Support\Facades\Route;
 | be assigned to the "api" middleware group.
 |
 */
+
+/*
+|--------------------------------------------------------------------------
+| Health Check Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('health')->group(function () {
+    Route::get('/', [HealthController::class, 'index']);
+    Route::get('{service}', [HealthController::class, 'show']);
+});
 
 Route::prefix('timers')->group(function () {
     Route::get('{key}', [TimerController::class, 'show']);
