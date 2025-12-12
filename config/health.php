@@ -33,7 +33,7 @@ return [
 
         'minio' => [
             'enabled' => env('HEALTH_CHECK_MINIO_ENABLED', true),
-            'disk' => env('HEALTH_CHECK_MINIO_DISK', 'minio-public'),
+            'disk' => 'minio-public',
         ],
 
         // 추후 추가 예정

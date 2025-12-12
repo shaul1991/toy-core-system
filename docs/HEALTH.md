@@ -86,7 +86,7 @@ return [
         ],
         'minio' => [
             'enabled' => env('HEALTH_CHECK_MINIO_ENABLED', true),
-            'disk' => env('HEALTH_CHECK_MINIO_DISK', 'minio-public'),
+            'disk' => 'minio-public',
         ],
     ],
 ];
@@ -107,7 +107,6 @@ return [
 | `MONGODB_USERNAME` | - | MongoDB 사용자명 |
 | `MONGODB_PASSWORD` | - | MongoDB 비밀번호 |
 | `HEALTH_CHECK_MINIO_ENABLED` | `true` | MinIO 체크 활성화 |
-| `HEALTH_CHECK_MINIO_DISK` | `minio-public` | MinIO 디스크 이름 |
 
 ### MinIO 연결 환경변수
 
