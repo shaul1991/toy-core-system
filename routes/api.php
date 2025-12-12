@@ -26,7 +26,7 @@ use Illuminate\Support\Facades\Route;
 */
 Route::prefix('health')->group(function () {
     Route::get('/', [HealthController::class, 'index']);
-    Route::get('{service}', [HealthController::class, 'show']);
+    Route::get('/{service}', [HealthController::class, 'show']);
 });
 
 Route::prefix('timers')->group(function () {
