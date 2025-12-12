@@ -6,6 +6,8 @@ namespace App\Domain\Health\Services;
 
 use App\Domain\Health\Contracts\HealthCheckerInterface;
 use App\Domain\Health\DTOs\HealthCheckResult;
+use App\Shared\Exceptions\ConflictException;
+use App\Shared\Exceptions\NotFoundException;
 
 final class HealthCheckService
 {
@@ -19,6 +21,10 @@ final class HealthCheckService
      */
     public function register(HealthCheckerInterface $checker): self
     {
+        if (array_key_exists($checker->name(), $this->checkers)) {
+            throw ConflictException::duplicateField('name', $checker->name());
+        }
+
         $this->checkers[$checker->name()] = $checker;
 
         return $this;
@@ -59,10 +65,13 @@ final class HealthCheckService
     /**
      * 특정 서비스 Health Check 수행
      */
-    public function check(string $name): ?HealthCheckResult
+    public function check(string $name): HealthCheckResult
     {
         if (! isset($this->checkers[$name])) {
-            return null;
+            $available = implode(', ', $this->getRegisteredServices());
+            throw NotFoundException::withMessage(
+                "HealthChecker '{$name}' not found. Available services: {$available}"
+            )->withDetails(['available_services' => $this->getRegisteredServices()]);
         }
 
         return $this->checkers[$name]->check();

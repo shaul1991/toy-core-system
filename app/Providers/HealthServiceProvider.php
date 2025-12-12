@@ -15,7 +15,7 @@ class HealthServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->singleton(HealthCheckService::class, function ($app) {
+        $this->app->singleton(HealthCheckService::class, function () {
             $service = new HealthCheckService;
 
             // PostgreSQL Health Checker 등록

@@ -7,6 +7,8 @@ namespace Tests\Unit\Domain\Health\Services;
 use App\Domain\Health\Contracts\HealthCheckerInterface;
 use App\Domain\Health\DTOs\HealthCheckResult;
 use App\Domain\Health\Services\HealthCheckService;
+use App\Shared\Exceptions\ConflictException;
+use App\Shared\Exceptions\NotFoundException;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 
@@ -36,6 +38,16 @@ final class HealthCheckServiceTest extends TestCase
         $result = $this->service->register($checker);
 
         $this->assertSame($this->service, $result);
+    }
+
+    #[Test]
+    public function register_throws_conflict_exception_for_duplicate_checker(): void
+    {
+        $this->expectException(ConflictException::class);
+        $this->expectExceptionMessage('name');
+
+        $this->service->register($this->createHealthyChecker('postgres'));
+        $this->service->register($this->createHealthyChecker('postgres'));
     }
 
     #[Test]
@@ -86,11 +98,12 @@ final class HealthCheckServiceTest extends TestCase
     }
 
     #[Test]
-    public function check_returns_null_for_unregistered_service(): void
+    public function check_throws_not_found_exception_for_unregistered_service(): void
     {
-        $result = $this->service->check('unknown');
+        $this->expectException(NotFoundException::class);
+        $this->expectExceptionMessage("HealthChecker 'unknown' not found");
 
-        $this->assertNull($result);
+        $this->service->check('unknown');
     }
 
     #[Test]
