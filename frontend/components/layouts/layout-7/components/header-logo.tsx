@@ -1,3 +1,5 @@
+'use client';
+
 import { useEffect, useState } from 'react';
 import { Menu } from 'lucide-react';
 import { toAbsoluteUrl } from '@/lib/helpers';

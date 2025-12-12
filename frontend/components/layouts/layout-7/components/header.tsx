@@ -1,3 +1,5 @@
+'use client';
+
 import { cn } from '@/lib/utils';
 import { useScrollPosition } from '@/hooks/use-scroll-position';
 import { HeaderLogo } from './header-logo';

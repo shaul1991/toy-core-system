@@ -1,3 +1,5 @@
+'use client';
+
 import { useBodyClass } from '@/hooks/use-body-class';
 import { Footer } from './footer';
 import { Header } from './header';

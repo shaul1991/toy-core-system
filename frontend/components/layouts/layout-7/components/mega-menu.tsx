@@ -1,3 +1,5 @@
+'use client';
+
 import { cn } from '@/lib/utils';
 import { useMenu } from '@/hooks/use-menu';
 import { MENU_MEGA } from '@/config/layout-7.config';
