@@ -116,7 +116,7 @@ Route::prefix('auth')->group(function () {
 | User Activity Routes
 |--------------------------------------------------------------------------
 */
-Route::prefix('user-activity')->group(function () {
+Route::prefix('user-activity')->middleware('auth:api')->group(function () {
     // CRUD 기본 엔드포인트
     Route::get('/', [UserActivityController::class, 'index']);
     Route::post('/', [UserActivityController::class, 'store']);

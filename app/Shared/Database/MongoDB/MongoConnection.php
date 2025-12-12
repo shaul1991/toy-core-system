@@ -113,13 +113,23 @@ final class MongoConnection
 
     /**
      * Execute a database command
+     *
+     * @throws RuntimeException When command returns empty result
      */
     public function command(array $command): object
     {
         $cmd = new Command($command);
         $cursor = $this->getManager()->executeCommand($this->database, $cmd);
+        $result = current($cursor->toArray());
 
-        return current($cursor->toArray());
+        if ($result === false) {
+            $commandName = array_key_first($command) ?? 'unknown';
+            throw new RuntimeException(
+                "MongoDB command '{$commandName}' returned empty result on database '{$this->database}'"
+            );
+        }
+
+        return $result;
     }
 
     /**
@@ -171,8 +181,8 @@ final class MongoConnection
 
         $uri .= "{$this->host}:{$this->port}";
 
-        if ($this->authSource) {
-            $uri .= "/?authSource={$this->authSource}";
+        if ($this->authSource !== null && $this->authSource !== '') {
+            $uri .= '/?authSource='.rawurlencode($this->authSource);
         }
 
         return $uri;
