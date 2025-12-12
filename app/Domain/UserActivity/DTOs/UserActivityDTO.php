@@ -126,7 +126,11 @@ final readonly class UserActivityDTO
         }
 
         if (is_string($value)) {
-            return new DateTimeImmutable($value);
+            try {
+                return new DateTimeImmutable($value);
+            } catch (\Exception) {
+                return null;
+            }
         }
 
         return null;

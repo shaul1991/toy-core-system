@@ -149,8 +149,13 @@ final class MongoUserActivityRepository implements UserActivityRepositoryInterfa
             $mongoFilters['user_id'] = (int) $filters['user_id'];
         }
 
+        // Exact action match takes precedence over action_like
         if (isset($filters['action'])) {
             $mongoFilters['action'] = $filters['action'];
+        } elseif (isset($filters['action_like'])) {
+            // Escape regex special characters to prevent ReDoS/injection
+            $escapedPattern = preg_quote($filters['action_like'], '/');
+            $mongoFilters['action'] = new Regex($escapedPattern, 'i');
         }
 
         if (isset($filters['target_type'])) {
@@ -161,20 +166,23 @@ final class MongoUserActivityRepository implements UserActivityRepositoryInterfa
             $mongoFilters['target_id'] = $filters['target_id'];
         }
 
-        if (isset($filters['action_like'])) {
-            $mongoFilters['action'] = new Regex($filters['action_like'], 'i');
-        }
-
+        // Validate and parse date filters safely
         if (isset($filters['from_date'])) {
-            $mongoFilters['created_at']['$gte'] = new \MongoDB\BSON\UTCDateTime(
-                new \DateTime($filters['from_date'])
-            );
+            $timestamp = strtotime($filters['from_date']);
+            if ($timestamp !== false) {
+                $mongoFilters['created_at']['$gte'] = new \MongoDB\BSON\UTCDateTime(
+                    (new \DateTime)->setTimestamp($timestamp)
+                );
+            }
         }
 
         if (isset($filters['to_date'])) {
-            $mongoFilters['created_at']['$lte'] = new \MongoDB\BSON\UTCDateTime(
-                new \DateTime($filters['to_date'])
-            );
+            $timestamp = strtotime($filters['to_date']);
+            if ($timestamp !== false) {
+                $mongoFilters['created_at']['$lte'] = new \MongoDB\BSON\UTCDateTime(
+                    (new \DateTime)->setTimestamp($timestamp)
+                );
+            }
         }
 
         return $mongoFilters;
