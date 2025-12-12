@@ -16,6 +16,11 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Trust all proxies (for load balancer / reverse proxy SSL termination)
         $middleware->trustProxies(at: '*');
+
+        // Domain Service용 미들웨어 등록
+        $middleware->alias([
+            'user.id' => \App\Http\Middleware\ExtractUserId::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // Sentry 통합

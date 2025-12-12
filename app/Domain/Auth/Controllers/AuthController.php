@@ -6,13 +6,16 @@ namespace App\Domain\Auth\Controllers;
 
 use App\Domain\Auth\Services\JwtService;
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Shared\Http\Traits\ApiResponsable;
+use App\Shared\Http\Traits\HasAuthenticatedUserId;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AuthController extends Controller
 {
     use ApiResponsable;
+    use HasAuthenticatedUserId;
 
     public function __construct(
         private readonly JwtService $jwtService,
@@ -60,26 +63,38 @@ class AuthController extends Controller
      *     path="/api/auth/logout",
      *     tags={"Auth"},
      *     summary="로그아웃",
-     *     security={{"bearerAuth":{}}},
+     *
+     *     @OA\Parameter(
+     *         name="X-User-Id",
+     *         in="header",
+     *         required=true,
+     *         description="BFF에서 JWT 검증 후 전달하는 사용자 ID",
+     *
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
      *
      *     @OA\RequestBody(
      *
      *         @OA\JsonContent(
      *
-     *             @OA\Property(property="refresh_token", type="string")
+     *             @OA\Property(property="refresh_token", type="string", description="무효화할 Refresh Token")
      *         )
      *     ),
      *
-     *     @OA\Response(response=200, description="로그아웃 성공")
+     *     @OA\Response(response=200, description="로그아웃 성공"),
+     *     @OA\Response(response=400, description="X-User-Id 헤더 누락")
      * )
      */
     public function logout(Request $request): JsonResponse
     {
-        $accessToken = $request->bearerToken();
+        // BFF에서 JWT 검증 후 전달된 사용자 ID 확인
+        $this->requireAuthenticatedUserId($request);
+
         $refreshToken = $request->input('refresh_token');
 
-        if ($accessToken) {
-            $this->jwtService->logout($accessToken, $refreshToken);
+        // Refresh Token 무효화 (Access Token은 BFF에서 관리)
+        if ($refreshToken) {
+            $this->jwtService->invalidateRefreshToken($refreshToken);
         }
 
         return $this->successResponse([
@@ -94,14 +109,24 @@ class AuthController extends Controller
      *     path="/api/auth/logout-all",
      *     tags={"Auth"},
      *     summary="모든 디바이스에서 로그아웃",
-     *     security={{"bearerAuth":{}}},
      *
-     *     @OA\Response(response=200, description="전체 로그아웃 성공")
+     *     @OA\Parameter(
+     *         name="X-User-Id",
+     *         in="header",
+     *         required=true,
+     *         description="BFF에서 JWT 검증 후 전달하는 사용자 ID",
+     *
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *
+     *     @OA\Response(response=200, description="전체 로그아웃 성공"),
+     *     @OA\Response(response=400, description="X-User-Id 헤더 누락")
      * )
      */
     public function logoutAll(Request $request): JsonResponse
     {
-        $user = auth('api')->user();
+        $userId = $this->requireAuthenticatedUserId($request);
+        $user = User::find($userId);
 
         if ($user) {
             $this->jwtService->logoutAll($user);
@@ -119,14 +144,29 @@ class AuthController extends Controller
      *     path="/api/auth/me",
      *     tags={"Auth"},
      *     summary="현재 사용자 정보 조회",
-     *     security={{"bearerAuth":{}}},
      *
-     *     @OA\Response(response=200, description="사용자 정보")
+     *     @OA\Parameter(
+     *         name="X-User-Id",
+     *         in="header",
+     *         required=true,
+     *         description="BFF에서 JWT 검증 후 전달하는 사용자 ID",
+     *
+     *         @OA\Schema(type="integer", example=1)
+     *     ),
+     *
+     *     @OA\Response(response=200, description="사용자 정보"),
+     *     @OA\Response(response=400, description="X-User-Id 헤더 누락"),
+     *     @OA\Response(response=404, description="사용자 없음")
      * )
      */
     public function me(Request $request): JsonResponse
     {
-        $user = auth('api')->user();
+        $userId = $this->requireAuthenticatedUserId($request);
+        $user = User::with('socialAccounts')->find($userId);
+
+        if (! $user) {
+            return $this->notFoundResponse('사용자를 찾을 수 없습니다.');
+        }
 
         return $this->successResponse([
             'id' => $user->id,

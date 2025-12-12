@@ -166,6 +166,20 @@ final class JwtService
     }
 
     /**
+     * Refresh Token 무효화 (Domain Service용)
+     *
+     * BFF에서 JWT 검증 후 호출됩니다.
+     * Access Token은 BFF에서 관리하므로 Domain Service에서는 Refresh Token만 무효화합니다.
+     */
+    public function invalidateRefreshToken(string $refreshToken): void
+    {
+        $tokenData = $this->refreshTokenRepository->find($refreshToken);
+        if ($tokenData) {
+            $this->refreshTokenRepository->delete($refreshToken);
+        }
+    }
+
+    /**
      * Access Token 검증
      */
     public function validateAccessToken(string $token): User

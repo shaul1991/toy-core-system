@@ -116,6 +116,7 @@ toy-core-system/
 | Timer | [docs/TIMER.md](docs/TIMER.md) | 목표 시점까지의 남은 시간 관리 |
 | File | [docs/FILE.md](docs/FILE.md) | MinIO 기반 파일 저장 및 관리 |
 | Notification | [docs/NOTIFICATION.md](docs/NOTIFICATION.md) | 다채널(Email, SMS, Slack) 알림 발송 |
+| User Activity | [docs/USER_ACTIVITY.md](docs/USER_ACTIVITY.md) | MongoDB 기반 사용자 활동 로그 |
 | Frontend | [docs/FRONTEND.md](docs/FRONTEND.md) | Next.js 기반 프론트엔드 (Metronic) |
 
 ### 도메인 문서 구조

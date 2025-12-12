@@ -3,6 +3,7 @@
 use App\Domain\Auth\Controllers\AuthController;
 use App\Domain\Auth\Controllers\SocialAuthController;
 use App\Domain\Health\Controllers\HealthController;
+use App\Domain\UserActivity\Controllers\UserActivityController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\TimerController;
@@ -82,8 +83,8 @@ Route::prefix('auth')->group(function () {
 
     Route::post('validate', [AuthController::class, 'validate']);
 
-    // 인증 필요 엔드포인트
-    Route::middleware('auth:api')->group(function () {
+    // 사용자 ID 필요 엔드포인트 (BFF에서 JWT 검증 후 X-User-Id 헤더로 전달)
+    Route::middleware('user.id')->group(function () {
         // 사용자 정보 조회 - 60회/분
         Route::get('me', [AuthController::class, 'me'])
             ->middleware('throttle:60,1');
@@ -108,4 +109,29 @@ Route::prefix('auth')->group(function () {
             ->where('provider', 'github|naver|kakao')
             ->middleware('throttle:5,1');
     });
+});
+
+/*
+|--------------------------------------------------------------------------
+| User Activity Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('user-activity')->middleware('user.id:optional')->group(function () {
+    // CRUD 기본 엔드포인트
+    Route::get('/', [UserActivityController::class, 'index']);
+    Route::post('/', [UserActivityController::class, 'store']);
+    Route::get('{id}', [UserActivityController::class, 'show'])
+        ->where('id', '[a-f0-9]{24}');
+    Route::put('{id}', [UserActivityController::class, 'update'])
+        ->where('id', '[a-f0-9]{24}');
+    Route::delete('{id}', [UserActivityController::class, 'destroy'])
+        ->where('id', '[a-f0-9]{24}');
+
+    // 사용자별 활동 조회
+    Route::get('user/{userId}', [UserActivityController::class, 'byUser'])
+        ->where('userId', '[0-9]+');
+    Route::get('user/{userId}/stats', [UserActivityController::class, 'stats'])
+        ->where('userId', '[0-9]+');
+    Route::delete('user/{userId}', [UserActivityController::class, 'destroyByUser'])
+        ->where('userId', '[0-9]+');
 });

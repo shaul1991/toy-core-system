@@ -93,6 +93,43 @@ final class ApiResponse
         return $response;
     }
 
+    /**
+     * Create a paginated response from array data
+     */
+    public static function paginatedArray(
+        array $data,
+        int $total,
+        int $page,
+        int $perPage,
+        ?string $message = null
+    ): self {
+        $response = new self;
+        $response->success = true;
+        $response->data = $data;
+        $response->message = $message;
+        $response->code = ApiResponseCode::SUCCESS;
+        $response->pagination = [
+            'type' => 'offset',
+            'page' => $page,
+            'per_page' => $perPage,
+            'total' => $total,
+            'last_page' => $perPage > 0 ? (int) ceil($total / $perPage) : 1,
+            'has_more_pages' => $perPage > 0 && $page < (int) ceil($total / $perPage),
+        ];
+
+        return $response;
+    }
+
+    public static function deleted(?string $message = null): self
+    {
+        $response = new self;
+        $response->success = true;
+        $response->message = $message ?? ApiResponseCode::DELETED->defaultMessage();
+        $response->code = ApiResponseCode::DELETED;
+
+        return $response;
+    }
+
     public function withMessage(string $message): self
     {
         $this->message = $message;
