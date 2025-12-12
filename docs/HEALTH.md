@@ -109,6 +109,21 @@ return [
 | `HEALTH_CHECK_MINIO_ENABLED` | `true` | MinIO 체크 활성화 |
 | `HEALTH_CHECK_MINIO_DISK` | `minio-public` | MinIO 디스크 이름 |
 
+### MinIO 연결 환경변수
+
+MinIO Health Check는 Laravel Storage를 통해 연결을 확인합니다. 다음 환경변수가 설정되어 있어야 합니다:
+
+| 변수 | 설명 |
+|------|------|
+| `MINIO_ACCESS_KEY_ID` | MinIO 액세스 키 |
+| `MINIO_SECRET_ACCESS_KEY` | MinIO 시크릿 키 |
+| `MINIO_REGION` | MinIO 리전 (기본: us-east-1) |
+| `MINIO_ENDPOINT` | MinIO 엔드포인트 URL |
+| `MINIO_URL` | MinIO 공개 URL |
+| `MINIO_USE_PATH_STYLE_ENDPOINT` | Path Style 엔드포인트 사용 여부 (기본: true) |
+| `MINIO_PUBLIC_BUCKET` | Public 버킷 이름 (기본: public) |
+| `MINIO_PRIVATE_BUCKET` | Private 버킷 이름 (기본: private) |
+
 ## API 엔드포인트
 
 ### 전체 서비스 Health Check
