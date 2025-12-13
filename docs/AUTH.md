@@ -1444,6 +1444,51 @@ KAKAO_REDIRECT_URI=https://your-domain.com/api/auth/kakao/callback
 | Blacklist 검증 | ✅ | `JwtService.php:192-195` | 로그아웃된 토큰 거부 |
 | 서명 알고리즘 | ✅ | `config/jwt.php:135` | HS256 (HMAC) |
 
+#### Access Token 검증 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Redis
+    participant DB as Database
+
+    Client->>BFF: API 요청<br/>(Cookie: access_token)
+    BFF->>BFF: 토큰 추출<br/>(Cookie 또는 Header)
+    BFF->>JWT: validateAccessToken(token)
+
+    JWT->>JWT: 1. JWT 서명 검증
+    Note over JWT: HS256 알고리즘으로<br/>서명 유효성 확인
+
+    JWT->>JWT: 2. 만료 시간 검증
+    Note over JWT: exp 클레임 확인
+
+    JWT->>Redis: 3. Blacklist 확인
+    Redis-->>JWT: 존재 여부
+
+    alt Blacklisted
+        JWT-->>BFF: TokenException::revoked()
+        BFF-->>Client: 401 TOKEN_REVOKED
+    end
+
+    JWT->>DB: 4. 사용자 조회
+    DB-->>JWT: User
+
+    JWT->>JWT: 5. Token Version 검증
+    Note over JWT: JWT.token_version ≤<br/>User.token_version
+
+    alt Version Mismatch
+        JWT-->>BFF: TokenException::allTokensRevoked()
+        BFF-->>Client: 401 ALL_TOKENS_REVOKED
+    end
+
+    JWT-->>BFF: User 객체
+    BFF->>BFF: Request에 User 설정
+    BFF-->>Client: 200 OK + 응답 데이터
+```
+
 ### 2. 토큰 저장 보안
 
 | 항목 | 상태 | 위치 | 비고 |
@@ -1455,6 +1500,37 @@ KAKAO_REDIRECT_URI=https://your-domain.com/api/auth/kakao/callback
 | token_type만 JS 접근 | ✅ | `Bff/AuthController.php:81` | `httpOnly: false` |
 | Refresh Token Redis 저장 | ✅ | `RedisRefreshTokenRepository.php` | TTL 7일 |
 
+#### 토큰 쿠키 설정 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Social as Social Provider
+    participant BFF as BFF Layer
+    participant Core as Core Service
+    participant Redis
+    participant Browser as Browser
+
+    Social->>BFF: OAuth Callback<br/>(code)
+    BFF->>Core: handleSocialCallback(provider)
+    Core->>Core: 소셜 사용자 정보 조회
+    Core->>Core: User 조회/생성
+    Core->>Core: JWT Access Token 생성
+    Core->>Redis: Refresh Token 저장<br/>(TTL: 7일)
+    Core-->>BFF: TokenDTO
+
+    BFF->>BFF: 쿠키 설정 결정
+    Note over BFF: domain: SESSION_DOMAIN<br/>또는 자동 추출
+
+    BFF-->>Browser: Redirect + Set-Cookie
+    Note over Browser: access_token<br/>HttpOnly, Secure, SameSite=Lax
+    Note over Browser: refresh_token<br/>HttpOnly, Secure, SameSite=Lax
+    Note over Browser: token_type<br/>Secure, SameSite=Lax<br/>(JS 접근 가능)
+
+    Browser->>Browser: 쿠키 저장
+    Note over Browser: XSS 공격으로부터<br/>토큰 보호
+```
+
 ### 3. 토큰 갱신 (Refresh Token)
 
 | 항목 | 상태 | 위치 | 비고 |
@@ -1465,6 +1541,93 @@ KAKAO_REDIRECT_URI=https://your-domain.com/api/auth/kakao/callback
 | 401 시 자동 갱신 (FE) | ✅ | `frontend/lib/api/client.ts:208-230` | 재시도 로직 포함 |
 | Token Version 검증 | ✅ | `JwtService.php:82-88` | 전체 로그아웃 후 갱신 차단 |
 
+#### Token Rotation 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Redis
+    participant DB as Database
+
+    Note over Client: Access Token 만료 감지<br/>(401 응답 수신)
+
+    Client->>Client: refreshPromise 확인
+    Note over Client: 동시 갱신 요청 방지
+
+    Client->>BFF: POST /auth/refresh<br/>(Cookie: refresh_token)
+    BFF->>JWT: refreshTokenPair(refreshToken)
+
+    JWT->>Redis: 1. Refresh Token 조회
+    Redis-->>JWT: {user_id, family, token_version}
+
+    alt Token Not Found
+        JWT-->>BFF: TokenException::refreshTokenExpired()
+        BFF-->>Client: 401 REFRESH_TOKEN_EXPIRED
+        Client->>Client: 로그인 페이지로 이동
+    end
+
+    JWT->>DB: 2. 사용자 조회 (캐시 활용)
+    DB-->>JWT: User
+
+    JWT->>JWT: 3. Token Version 검증
+    Note over JWT: stored_version ≥<br/>user.token_version
+
+    alt Version Mismatch (전체 로그아웃됨)
+        JWT->>Redis: Family 전체 무효화
+        JWT-->>BFF: TokenException::allTokensRevoked()
+        BFF-->>Client: 401 ALL_TOKENS_REVOKED
+    end
+
+    JWT->>Redis: 4. 기존 Refresh Token 삭제
+    Note over Redis: Token Rotation:<br/>사용된 토큰 즉시 무효화
+
+    JWT->>JWT: 5. 새 Access Token 생성
+    JWT->>Redis: 6. 새 Refresh Token 저장<br/>(동일 Family ID)
+
+    JWT-->>BFF: TokenDTO (새 토큰 쌍)
+    BFF-->>Client: 200 OK + Set-Cookie<br/>(새 access_token, refresh_token)
+
+    Client->>Client: 원래 요청 재시도
+```
+
+#### 프론트엔드 자동 갱신 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Application
+    participant Client as API Client
+    participant BFF as BFF Layer
+
+    App->>Client: API 요청
+    Client->>BFF: GET /api/resource
+    BFF-->>Client: 401 Unauthorized
+
+    Client->>Client: 401 감지 + 갱신 필요
+
+    alt refreshPromise 존재 (이미 갱신 중)
+        Client->>Client: 기존 Promise 대기
+    else refreshPromise 없음
+        Client->>Client: 새 갱신 요청 시작
+        Client->>BFF: POST /auth/refresh
+        BFF-->>Client: 200 OK (새 토큰 쿠키)
+        Client->>Client: refreshPromise = null
+    end
+
+    alt 갱신 성공
+        Client->>BFF: GET /api/resource (재시도)
+        BFF-->>Client: 200 OK + 데이터
+        Client-->>App: 응답 데이터
+    else 갱신 실패
+        Client->>Client: clearTokenCookie()
+        Client-->>App: {requiresLogin: true}
+        App->>App: 로그인 페이지로 이동
+    end
+```
+
 ### 4. 토큰 무효화 (Logout/Revoke)
 
 | 항목 | 상태 | 위치 | 비고 |
@@ -1474,6 +1637,81 @@ KAKAO_REDIRECT_URI=https://your-domain.com/api/auth/kakao/callback
 | Access Token Blacklist | ✅ | `RedisRefreshTokenRepository.php:105-108` | TTL = 토큰 남은 시간 |
 | Token Family 무효화 | ✅ | `RedisRefreshTokenRepository.php:75-100` | Lua Script 원자적 실행 |
 | 쿠키 삭제 | ✅ | `Bff/AuthController.php:203-206` | domain/path 일치 |
+
+#### 단일 로그아웃 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Redis
+
+    Client->>BFF: POST /auth/logout<br/>(Cookie: access_token, refresh_token)
+    BFF->>JWT: logout(accessToken, refreshToken)
+
+    JWT->>JWT: 1. Access Token 파싱
+    Note over JWT: jti, exp 클레임 추출
+
+    JWT->>JWT: 2. 남은 TTL 계산
+    Note over JWT: ttl = exp - now
+
+    JWT->>Redis: 3. Access Token Blacklist 추가
+    Note over Redis: blacklist:access:{jti}<br/>TTL = 남은 만료 시간
+
+    opt Refresh Token 존재
+        JWT->>Redis: 4. Refresh Token 조회
+        Redis-->>JWT: {user_id, family}
+        JWT->>Redis: 5. Refresh Token 삭제
+    end
+
+    JWT-->>BFF: void
+
+    BFF-->>Client: 200 OK + Set-Cookie<br/>(쿠키 삭제: expires=과거)
+    Note over Client: access_token 삭제<br/>refresh_token 삭제<br/>token_type 삭제
+
+    Client->>Client: 로그인 페이지로 이동
+```
+
+#### 전체 로그아웃 플로우 (모든 디바이스)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Cache as UserCache
+    participant DB as Database
+
+    Client->>BFF: POST /auth/logout-all
+    BFF->>BFF: 현재 사용자 확인
+    BFF->>JWT: logoutAll(user)
+
+    JWT->>DB: user.invalidateAllTokens()
+    Note over DB: token_version++<br/>(1 → 2)
+
+    DB-->>JWT: updated
+
+    JWT->>Cache: invalidate(userId)
+    Note over Cache: 캐시 삭제<br/>(새 version 반영)
+
+    JWT-->>BFF: void
+
+    BFF-->>Client: 200 OK + Set-Cookie<br/>(쿠키 삭제)
+
+    Note over Client: 이후 모든 디바이스에서<br/>token_version 불일치로<br/>401 응답 수신
+
+    rect rgb(255, 240, 240)
+        Note over Client: 다른 디바이스들
+        Client->>BFF: API 요청 (기존 토큰)
+        BFF->>JWT: validateAccessToken()
+        JWT->>JWT: token_version 검증 실패
+        JWT-->>BFF: ALL_TOKENS_REVOKED
+        BFF-->>Client: 401 Unauthorized
+    end
+```
 
 ### 5. 보안 취약점 방지
 
@@ -1487,6 +1725,84 @@ KAKAO_REDIRECT_URI=https://your-domain.com/api/auth/kakao/callback
 | XSS 방지 | ✅ | HttpOnly 쿠키 | JS에서 토큰 접근 불가 |
 | CSRF 방지 | ✅ | `SameSite=Lax` | 크로스 사이트 요청 제한 |
 | 토큰 재사용 감지 | ✅ | `JwtService.php:109-123` | Family 전체 무효화 |
+
+#### Refresh Token 재사용 감지 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Attacker as 공격자
+    participant User as 정상 사용자
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Redis
+
+    Note over User,Attacker: 공격자가 Refresh Token 탈취
+
+    User->>BFF: POST /auth/refresh<br/>(refresh_token_v1)
+    BFF->>JWT: refreshTokenPair(token_v1)
+    JWT->>Redis: token_v1 조회
+    Redis-->>JWT: {user_id, family_A}
+
+    JWT->>Redis: token_v1 삭제 (사용됨)
+    JWT->>Redis: token_v2 저장 (family_A)
+    JWT-->>BFF: 새 토큰 쌍 (token_v2)
+    BFF-->>User: 200 OK
+
+    Note over User: 정상 사용자는<br/>token_v2 사용 중
+
+    rect rgb(255, 230, 230)
+        Note over Attacker: 공격자가 탈취한<br/>token_v1 사용 시도
+
+        Attacker->>BFF: POST /auth/refresh<br/>(refresh_token_v1)
+        BFF->>JWT: refreshTokenPair(token_v1)
+        JWT->>Redis: token_v1 조회
+        Redis-->>JWT: null (이미 삭제됨)
+
+        Note over JWT: 재사용 감지!<br/>토큰이 이미 사용됨
+
+        JWT-->>BFF: TokenException::refreshTokenExpired()
+        BFF-->>Attacker: 401 REFRESH_TOKEN_EXPIRED
+    end
+
+    Note over User,Attacker: 보안 강화: Family 전체 무효화 가능<br/>(handleTokenReuseDetected 호출 시)
+```
+
+#### Token Family 무효화 상세
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant JWT as JwtService
+    participant Redis
+    participant DB as Database
+    participant Cache as UserCache
+
+    Note over JWT: 토큰 재사용 감지됨
+
+    JWT->>JWT: handleTokenReuseDetected(familyId, userId)
+
+    JWT->>Redis: invalidateFamily(familyId)
+    Note over Redis: Lua Script 원자적 실행
+
+    Redis->>Redis: SMEMBERS token_family:{familyId}
+    Note over Redis: [token_v1, token_v2, token_v3]
+
+    Redis->>Redis: DEL refresh_token:token_v1
+    Redis->>Redis: DEL refresh_token:token_v2
+    Redis->>Redis: DEL refresh_token:token_v3
+    Redis->>Redis: DEL token_family:{familyId}
+
+    Redis-->>JWT: 삭제된 토큰 수: 3
+
+    JWT->>DB: user.invalidateAllTokens()
+    Note over DB: token_version++
+
+    JWT->>Cache: invalidate(userId)
+    Note over Cache: 사용자 캐시 삭제
+
+    Note over JWT: 해당 사용자의 모든 세션 종료<br/>재로그인 필요
+```
 
 ### 6. 에러 처리
 
