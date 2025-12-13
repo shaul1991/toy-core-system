@@ -30,7 +30,7 @@ const HeaderLogo = () => {
   return (
     <div className="flex items-stretch gap-1.5 lg:gap-10 grow">
       <div className="flex items-center gap-2.5">
-        <Link href="/layout-7">
+        <Link href="/">
           <img
             src={toAbsoluteUrl('/media/app/mini-logo-circle-primary.svg')}
             className="dark:hidden min-h-[34px]"
