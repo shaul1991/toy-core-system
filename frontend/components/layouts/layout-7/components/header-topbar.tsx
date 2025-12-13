@@ -1,8 +1,18 @@
+import Link from 'next/link';
+import { LogIn } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { UserDropdownMenu } from '../../layout-1/shared/topbar/user-dropdown-menu';
 
 const HeaderTopbar = () => {
   return (
     <div className="flex items-center flex-wrap gap-2 lg:gap-3.5">
+      <Button variant="outline" size="sm" asChild>
+        <Link href="/login">
+          <LogIn className="size-4" />
+          회원가입 / 로그인
+        </Link>
+      </Button>
+
       <UserDropdownMenu
         trigger={
           <div className="cursor-pointer size-[34px] rounded-full inline-flex items-center justify-center relative text-lg font-medium border border-input bg-muted">
