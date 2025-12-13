@@ -1,5 +1,6 @@
 import { ReactNode, Suspense } from 'react';
 import { Inter } from 'next/font/google';
+import { cookies } from 'next/headers';
 import { cn } from '@/lib/utils';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
@@ -7,6 +8,7 @@ import { Metadata } from 'next';
 import { ThemeProvider } from 'next-themes';
 import { Layout7 } from '@/components/layouts/layout-7';
 import { LayoutProvider } from '@/components/layouts/layout-1/components/context';
+import { AuthProvider } from '@/components/providers/auth-provider';
 
 import '@/styles/globals.css';
 const inter = Inter({ subsets: ['latin'] });
@@ -23,6 +25,9 @@ export default async function RootLayout({
 }: {
   children: ReactNode;
 }) {
+  const cookieStore = await cookies();
+  const isLoggedIn = cookieStore.has('token_type');
+
   return (
     <html className="h-full" suppressHydrationWarning>
       <body
@@ -39,14 +44,16 @@ export default async function RootLayout({
           disableTransitionOnChange
           enableColorScheme
         >
-          <TooltipProvider delayDuration={0}>
-            <LayoutProvider>
-              <Suspense>
-                <Layout7>{children}</Layout7>
-              </Suspense>
-            </LayoutProvider>
-            <Toaster />
-          </TooltipProvider>
+          <AuthProvider initialIsLoggedIn={isLoggedIn}>
+            <TooltipProvider delayDuration={0}>
+              <LayoutProvider>
+                <Suspense>
+                  <Layout7>{children}</Layout7>
+                </Suspense>
+              </LayoutProvider>
+              <Toaster />
+            </TooltipProvider>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

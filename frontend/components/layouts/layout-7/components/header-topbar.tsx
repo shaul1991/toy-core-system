@@ -2,17 +2,12 @@
 
 import Link from 'next/link';
 import { LogIn } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { UserDropdownMenu } from '../../layout-1/shared/topbar/user-dropdown-menu';
-import { isAuthenticated } from '@/lib/api/client';
+import { useAuth } from '@/components/providers/auth-provider';
 
 const HeaderTopbar = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-
-  useEffect(() => {
-    setIsLoggedIn(isAuthenticated());
-  }, []);
+  const { isLoggedIn } = useAuth();
 
   return (
     <div className="flex items-center flex-wrap gap-2 lg:gap-3.5">

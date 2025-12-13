@@ -32,7 +32,7 @@ final readonly class SocialUserDTO
             avatar: $user->getAvatar(),
             token: $user->token,
             refreshToken: $user->refreshToken ?? null,
-            expiresIn: $user->expiresIn ?? null,
+            expiresIn: isset($user->expiresIn) ? (int) $user->expiresIn : null,
         );
     }
 }
