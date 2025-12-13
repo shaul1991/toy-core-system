@@ -267,7 +267,7 @@ Route::middleware('bff.auth:optional')->group(function () {
 
 ```env
 # Frontend URL (BFF 콜백에서 사용)
-FRONTEND_URL=http://localhost:3000
+FRONTEND_URL=http://localhost:3002
 
 # 쿠키 도메인 설정 (프로덕션 필수)
 # 서브도메인 간 쿠키 공유를 위해 앞에 점(.)을 붙임

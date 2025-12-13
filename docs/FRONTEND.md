@@ -144,7 +144,7 @@ cd frontend
 # 의존성 설치 (React 19 호환성을 위해 --force 사용)
 npm install --force
 
-# 개발 서버 실행 (http://localhost:3000)
+# 개발 서버 실행 (http://localhost:3002)
 npm run dev
 ```
 

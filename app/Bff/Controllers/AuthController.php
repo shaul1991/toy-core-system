@@ -65,7 +65,7 @@ final class AuthController extends Controller
      */
     public function callback(Request $request, string $provider): RedirectResponse
     {
-        $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+        $frontendUrl = config('app.frontend_url', 'http://localhost:3002');
 
         try {
             $tokenDto = $this->coreAuthService->handleSocialCallback($provider);

@@ -26,7 +26,7 @@ final readonly class SocialUserDTO
     {
         return new self(
             provider: $provider,
-            providerUserId: $user->getId(),
+            providerUserId: (string) $user->getId(),
             email: $user->getEmail(),
             name: $user->getName() ?? $user->getNickname(),
             avatar: $user->getAvatar(),
