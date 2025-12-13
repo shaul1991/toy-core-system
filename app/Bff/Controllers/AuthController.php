@@ -28,6 +28,13 @@ final class AuthController extends Controller
 {
     use ApiResponsable;
 
+    /**
+     * 쿠키 설정 캐시
+     *
+     * @var array{domain: ?string, secure: bool}|null
+     */
+    private ?array $cookieSettings = null;
+
     public function __construct(
         private readonly CoreAuthService $coreAuthService,
     ) {}
@@ -58,49 +65,19 @@ final class AuthController extends Controller
     public function callback(Request $request, string $provider): RedirectResponse
     {
         $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
-        $isSecure = config('app.env') === 'production';
 
         try {
             $tokenDto = $this->coreAuthService->handleSocialCallback($provider);
 
             // 프론트엔드 콜백 URL로 리다이렉트
             $callbackUrl = $frontendUrl . '/auth/callback';
+            $accessTokenMinutes = (int) ceil($tokenDto->expiresIn / 60);
 
             // 토큰을 HttpOnly, Secure 쿠키로 설정
             return redirect()->away($callbackUrl)
-                ->withCookie(cookie(
-                    name: 'access_token',
-                    value: $tokenDto->accessToken,
-                    minutes: (int) ceil($tokenDto->expiresIn / 60),
-                    path: '/',
-                    domain: null,
-                    secure: $isSecure,
-                    httpOnly: true,
-                    raw: false,
-                    sameSite: 'Lax'
-                ))
-                ->withCookie(cookie(
-                    name: 'refresh_token',
-                    value: $tokenDto->refreshToken,
-                    minutes: 60 * 24 * 7, // 7일
-                    path: '/',
-                    domain: null,
-                    secure: $isSecure,
-                    httpOnly: true,
-                    raw: false,
-                    sameSite: 'Lax'
-                ))
-                ->withCookie(cookie(
-                    name: 'token_type',
-                    value: $tokenDto->tokenType,
-                    minutes: (int) ceil($tokenDto->expiresIn / 60),
-                    path: '/',
-                    domain: null,
-                    secure: $isSecure,
-                    httpOnly: false, // 프론트엔드에서 읽을 수 있도록
-                    raw: false,
-                    sameSite: 'Lax'
-                ));
+                ->withCookie($this->makeAuthCookie($request, 'access_token', $tokenDto->accessToken, $accessTokenMinutes, true))
+                ->withCookie($this->makeAuthCookie($request, 'refresh_token', $tokenDto->refreshToken, 60 * 24 * 7, true))
+                ->withCookie($this->makeAuthCookie($request, 'token_type', $tokenDto->tokenType, $accessTokenMinutes, false));
         } catch (SocialAuthException $e) {
             // 에러 시 프론트엔드 에러 페이지로 리다이렉트
             $errorUrl = $frontendUrl . '/auth/error';
@@ -127,10 +104,9 @@ final class AuthController extends Controller
             return $this->badRequestResponse('refresh_token이 필요합니다.');
         }
 
-        $isSecure = config('app.env') === 'production';
-
         try {
             $tokenDto = $this->coreAuthService->refreshToken($refreshToken);
+            $accessTokenMinutes = (int) ceil($tokenDto->expiresIn / 60);
 
             // 새 토큰을 쿠키로 설정하여 응답
             return $this->successResponse([
@@ -140,37 +116,10 @@ final class AuthController extends Controller
                     'email' => $tokenDto->user->email,
                     'avatar' => $tokenDto->user->avatar,
                 ],
-            ])->withCookie(cookie(
-                name: 'access_token',
-                value: $tokenDto->accessToken,
-                minutes: (int) ceil($tokenDto->expiresIn / 60),
-                path: '/',
-                domain: null,
-                secure: $isSecure,
-                httpOnly: true,
-                raw: false,
-                sameSite: 'Lax'
-            ))->withCookie(cookie(
-                name: 'refresh_token',
-                value: $tokenDto->refreshToken,
-                minutes: 60 * 24 * 7, // 7일
-                path: '/',
-                domain: null,
-                secure: $isSecure,
-                httpOnly: true,
-                raw: false,
-                sameSite: 'Lax'
-            ))->withCookie(cookie(
-                name: 'token_type',
-                value: $tokenDto->tokenType,
-                minutes: (int) ceil($tokenDto->expiresIn / 60),
-                path: '/',
-                domain: null,
-                secure: $isSecure,
-                httpOnly: false,
-                raw: false,
-                sameSite: 'Lax'
-            ));
+            ])
+                ->withCookie($this->makeAuthCookie($request, 'access_token', $tokenDto->accessToken, $accessTokenMinutes, true))
+                ->withCookie($this->makeAuthCookie($request, 'refresh_token', $tokenDto->refreshToken, 60 * 24 * 7, true))
+                ->withCookie($this->makeAuthCookie($request, 'token_type', $tokenDto->tokenType, $accessTokenMinutes, false));
         } catch (TokenException $e) {
             return $this->unauthorizedResponse($e->getMessage());
         }
@@ -353,5 +302,91 @@ final class AuthController extends Controller
 
         // 2. 쿠키에서 access_token 추출
         return $request->cookie('access_token');
+    }
+
+    /**
+     * 쿠키 설정 동적 결정
+     *
+     * domain: 프론트엔드 URL 또는 전용 설정에서 추출. 서브도메인 공유를 위해 앞에 점(.)을 붙임
+     * secure: 요청 스킴(HTTPS) 또는 명시적 설정으로 결정
+     *
+     * @return array{domain: ?string, secure: bool}
+     */
+    private function getCookieSettings(Request $request): array
+    {
+        // 캐시된 설정 반환
+        if ($this->cookieSettings !== null) {
+            return $this->cookieSettings;
+        }
+
+        // 1. secure 결정: 명시적 설정 > 요청 스킴 > 환경 기반
+        $secure = config('session.secure');
+        if ($secure === null) {
+            // 요청이 HTTPS인지 확인 (프록시 뒤에서도 동작하도록 isSecure() 사용)
+            $secure = $request->isSecure();
+        }
+
+        // 2. domain 결정: 명시적 설정 > 프론트엔드 URL에서 추출
+        $domain = config('session.domain');
+
+        if ($domain === null) {
+            $frontendUrl = config('app.frontend_url');
+
+            if ($frontendUrl) {
+                $parsedUrl = parse_url($frontendUrl);
+                $host = $parsedUrl['host'] ?? null;
+
+                if ($host && $host !== 'localhost' && ! filter_var($host, FILTER_VALIDATE_IP)) {
+                    // 서브도메인 공유를 위해 베이스 도메인 추출 후 앞에 점(.) 붙임
+                    // 예: app.example.com → .example.com
+                    $parts = explode('.', $host);
+                    if (count($parts) >= 2) {
+                        // 마지막 두 부분만 사용 (example.com)
+                        // 단, co.kr 같은 2단계 TLD는 마지막 3개 사용
+                        $twoLevelTlds = ['co.kr', 'co.jp', 'co.uk', 'com.au', 'com.br'];
+                        $lastTwo = implode('.', array_slice($parts, -2));
+
+                        if (in_array($lastTwo, $twoLevelTlds, true) && count($parts) >= 3) {
+                            $domain = '.' . implode('.', array_slice($parts, -3));
+                        } else {
+                            $domain = '.' . implode('.', array_slice($parts, -2));
+                        }
+                    }
+                }
+                // localhost나 IP 주소는 domain을 null로 유지
+            }
+        }
+
+        $this->cookieSettings = [
+            'domain' => $domain,
+            'secure' => (bool) $secure,
+        ];
+
+        return $this->cookieSettings;
+    }
+
+    /**
+     * 인증 쿠키 생성
+     *
+     * @param  string  $name  쿠키 이름
+     * @param  string  $value  쿠키 값
+     * @param  int  $minutes  만료 시간(분)
+     * @param  bool  $httpOnly  HttpOnly 속성
+     */
+    private function makeAuthCookie(Request $request, string $name, string $value, int $minutes, bool $httpOnly = true): \Symfony\Component\HttpFoundation\Cookie
+    {
+        $settings = $this->getCookieSettings($request);
+
+        return cookie(
+            name: $name,
+            value: $value,
+            minutes: $minutes,
+            path: '/',
+            domain: $settings['domain'],
+            secure: $settings['secure'],
+            httpOnly: $httpOnly,
+            raw: false,
+            sameSite: 'Lax'
+        );
     }
 }
