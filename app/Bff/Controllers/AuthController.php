@@ -59,7 +59,7 @@ final class AuthController extends Controller
      * OAuth 콜백을 처리하고 JWT 토큰을 발급합니다.
      * 토큰은 HttpOnly 쿠키로 설정하여 보안을 강화합니다.
      *
-     * @param  Request  $request  OAuth 에러 처리를 위해 유지
+     * @param  Request  $request  쿠키 설정(domain/secure) 결정에 사용
      * @param  string  $provider  소셜 제공자 (github, naver, kakao)
      */
     public function callback(Request $request, string $provider): RedirectResponse
