@@ -131,6 +131,56 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 /**
+ * 응답 본문을 JSON으로 파싱
+ *
+ * 비 JSON 응답(HTML, 빈 본문 등)에 대한 에러 처리 포함
+ */
+async function parseResponseBody<T>(response: Response): Promise<ApiResponse<T>> {
+  const contentType = response.headers.get('content-type');
+
+  // 빈 응답 처리 (204 No Content 등)
+  if (response.status === 204 || response.headers.get('content-length') === '0') {
+    return {
+      success: response.ok,
+      data: undefined,
+    };
+  }
+
+  // JSON 응답 시도
+  if (contentType?.includes('application/json')) {
+    try {
+      return await response.json();
+    } catch {
+      // JSON 파싱 실패
+      return {
+        success: false,
+        error: {
+          code: 'PARSE_ERROR',
+          message: 'JSON 응답 파싱에 실패했습니다.',
+          details: { status: response.status, statusText: response.statusText },
+        },
+      };
+    }
+  }
+
+  // 비 JSON 응답 처리 (HTML, 텍스트 등)
+  const rawBody = await response.text();
+  return {
+    success: false,
+    error: {
+      code: 'UNEXPECTED_RESPONSE',
+      message: `서버가 예상하지 못한 응답을 반환했습니다. (${response.status} ${response.statusText})`,
+      details: {
+        status: response.status,
+        statusText: response.statusText,
+        contentType: contentType || 'unknown',
+        body: rawBody.substring(0, 500), // 긴 HTML 응답 방지
+      },
+    },
+  };
+}
+
+/**
  * API 요청 함수
  *
  * credentials: 'include'로 쿠키 자동 전송
@@ -153,7 +203,7 @@ async function request<T>(
     credentials: 'include', // 쿠키 자동 전송
   });
 
-  const data = await response.json();
+  const data = await parseResponseBody<T>(response);
 
   // 401 에러 처리 - 토큰 만료
   if (response.status === 401 && !endpoint.includes('/auth/refresh')) {

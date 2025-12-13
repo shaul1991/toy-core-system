@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace App\Bff\Controllers;
 
 use App\Bff\Services\CoreAuthService;
-use App\Domain\Auth\Exceptions\SocialAuthException;
 use App\Domain\Auth\Exceptions\TokenException;
 use App\Http\Controllers\Controller;
 use App\Shared\Exceptions\BadRequestException;
+use App\Shared\Exceptions\ConflictException;
+use App\Shared\Exceptions\ServiceUnavailableException;
 use App\Shared\Http\ApiResponse;
 use App\Shared\Http\ApiResponseCode;
 use App\Shared\Http\Traits\ApiResponsable;
@@ -78,7 +79,7 @@ final class AuthController extends Controller
                 ->withCookie($this->makeAuthCookie($request, 'access_token', $tokenDto->accessToken, $accessTokenMinutes, true))
                 ->withCookie($this->makeAuthCookie($request, 'refresh_token', $tokenDto->refreshToken, 60 * 24 * 7, true))
                 ->withCookie($this->makeAuthCookie($request, 'token_type', $tokenDto->tokenType, $accessTokenMinutes, false));
-        } catch (SocialAuthException $e) {
+        } catch (BadRequestException|ConflictException|ServiceUnavailableException $e) {
             // 에러 시 프론트엔드 에러 페이지로 리다이렉트
             $errorUrl = $frontendUrl . '/auth/error';
 
