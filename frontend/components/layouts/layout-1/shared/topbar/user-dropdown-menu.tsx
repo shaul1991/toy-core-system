@@ -1,4 +1,6 @@
-import { ReactNode } from 'react';
+'use client';
+
+import { ReactNode, useState } from 'react';
 import {
   BetweenHorizontalStart,
   Coffee,
@@ -6,6 +8,7 @@ import {
   FileText,
   Globe,
   IdCard,
+  LogOut,
   Moon,
   Settings,
   Shield,
@@ -14,7 +17,9 @@ import {
   Users,
 } from 'lucide-react';
 import { useTheme } from 'next-themes';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { authApi } from '@/lib/api/client';
 import { toAbsoluteUrl } from '@/lib/helpers';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -62,9 +67,24 @@ const I18N_LANGUAGES = [
 export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
   const currenLanguage = I18N_LANGUAGES[0];
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleThemeToggle = (checked: boolean) => {
     setTheme(checked ? 'dark' : 'light');
+  };
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+    try {
+      await authApi.logout();
+      router.push('/');
+      router.refresh();
+    } catch (error) {
+      console.error('로그아웃 실패:', error);
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -252,8 +272,15 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
           </div>
         </DropdownMenuItem>
         <div className="p-2 mt-1">
-          <Button variant="outline" size="sm" className="w-full">
-            Logout
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={handleLogout}
+            disabled={isLoggingOut}
+          >
+            <LogOut className="size-4" />
+            {isLoggingOut ? '로그아웃 중...' : '로그아웃'}
           </Button>
         </div>
       </DropdownMenuContent>

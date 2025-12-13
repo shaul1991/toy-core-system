@@ -1,17 +1,29 @@
+'use client';
+
 import Link from 'next/link';
 import { LogIn } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { UserDropdownMenu } from '../../layout-1/shared/topbar/user-dropdown-menu';
+import { isAuthenticated } from '@/lib/api/client';
 
 const HeaderTopbar = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setIsLoggedIn(isAuthenticated());
+  }, []);
+
   return (
     <div className="flex items-center flex-wrap gap-2 lg:gap-3.5">
-      <Button variant="outline" size="sm" asChild>
-        <Link href="/login">
-          <LogIn className="size-4" />
-          회원가입 / 로그인
-        </Link>
-      </Button>
+      {!isLoggedIn && (
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/login">
+            <LogIn className="size-4" />
+            회원가입 / 로그인
+          </Link>
+        </Button>
+      )}
 
       <UserDropdownMenu
         trigger={
