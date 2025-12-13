@@ -269,11 +269,23 @@ Route::middleware('bff.auth:optional')->group(function () {
 # Frontend URL (BFF 콜백에서 사용)
 FRONTEND_URL=http://localhost:3000
 
+# 쿠키 도메인 설정 (프로덕션 필수)
+# 서브도메인 간 쿠키 공유를 위해 앞에 점(.)을 붙임
+# 예: api.example.com과 app.example.com이 쿠키를 공유하려면 .example.com 설정
+SESSION_DOMAIN=.example.com
+
+# HTTPS 환경에서는 true로 설정 (프로덕션 필수)
+SESSION_SECURE_COOKIE=true
+
 # Social Login Redirect URI
 GITHUB_REDIRECT_URI=${APP_URL}/api/auth/github/callback
 NAVER_REDIRECT_URI=${APP_URL}/api/auth/naver/callback
 KAKAO_REDIRECT_URI=${APP_URL}/api/auth/kakao/callback
 ```
+
+> **중요**: `SESSION_DOMAIN`을 명시적으로 설정하지 않으면 프론트엔드 URL에서 자동 추출을 시도합니다.
+> 이 방식은 일부 국가별 TLD(co.kr, com.au 등)에서 올바르게 동작하지 않을 수 있으므로,
+> 프로덕션 환경에서는 반드시 명시적으로 설정하세요.
 
 ### Frontend (.env)
 

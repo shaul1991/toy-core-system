@@ -308,8 +308,12 @@ final class AuthController extends Controller
     /**
      * 쿠키 설정 동적 결정
      *
-     * domain: 프론트엔드 URL 또는 전용 설정에서 추출. 서브도메인 공유를 위해 앞에 점(.)을 붙임
-     * secure: 요청 스킴(HTTPS) 또는 명시적 설정으로 결정
+     * 프로덕션 환경에서는 config/session.php에서 domain을 명시적으로 설정하는 것을 권장합니다.
+     * 자동 추출은 일부 2단계 TLD에서 올바르게 동작하지 않을 수 있습니다.
+     *
+     * 권장 설정 (.env):
+     *   SESSION_DOMAIN=.example.com
+     *   SESSION_SECURE_COOKIE=true
      *
      * @return array{domain: ?string, secure: bool}
      */
@@ -320,42 +324,20 @@ final class AuthController extends Controller
             return $this->cookieSettings;
         }
 
-        // 1. secure 결정: 명시적 설정 > 요청 스킴 > 환경 기반
+        // 1. secure 결정: 명시적 설정 > 요청 스킴
         $secure = config('session.secure');
         if ($secure === null) {
             // 요청이 HTTPS인지 확인 (프록시 뒤에서도 동작하도록 isSecure() 사용)
             $secure = $request->isSecure();
         }
 
-        // 2. domain 결정: 명시적 설정 > 프론트엔드 URL에서 추출
+        // 2. domain 결정: 명시적 설정 우선 (권장)
         $domain = config('session.domain');
 
         if ($domain === null) {
-            $frontendUrl = config('app.frontend_url');
-
-            if ($frontendUrl) {
-                $parsedUrl = parse_url($frontendUrl);
-                $host = $parsedUrl['host'] ?? null;
-
-                if ($host && $host !== 'localhost' && ! filter_var($host, FILTER_VALIDATE_IP)) {
-                    // 서브도메인 공유를 위해 베이스 도메인 추출 후 앞에 점(.) 붙임
-                    // 예: app.example.com → .example.com
-                    $parts = explode('.', $host);
-                    if (count($parts) >= 2) {
-                        // 마지막 두 부분만 사용 (example.com)
-                        // 단, co.kr 같은 2단계 TLD는 마지막 3개 사용
-                        $twoLevelTlds = ['co.kr', 'co.jp', 'co.uk', 'com.au', 'com.br'];
-                        $lastTwo = implode('.', array_slice($parts, -2));
-
-                        if (in_array($lastTwo, $twoLevelTlds, true) && count($parts) >= 3) {
-                            $domain = '.' . implode('.', array_slice($parts, -3));
-                        } else {
-                            $domain = '.' . implode('.', array_slice($parts, -2));
-                        }
-                    }
-                }
-                // localhost나 IP 주소는 domain을 null로 유지
-            }
+            // 명시적 설정이 없으면 프론트엔드 URL에서 추출 시도 (폴백)
+            // 주의: 이 방식은 일부 국가별 TLD에서 올바르게 동작하지 않을 수 있음
+            $domain = $this->extractDomainFromFrontendUrl();
         }
 
         $this->cookieSettings = [
@@ -364,6 +346,57 @@ final class AuthController extends Controller
         ];
 
         return $this->cookieSettings;
+    }
+
+    /**
+     * 프론트엔드 URL에서 쿠키 도메인 추출 (폴백용)
+     *
+     * 주의: 프로덕션에서는 SESSION_DOMAIN 환경 변수 사용을 권장합니다.
+     * 2단계 TLD 목록이 완전하지 않아 일부 도메인에서 오작동할 수 있습니다.
+     */
+    private function extractDomainFromFrontendUrl(): ?string
+    {
+        $frontendUrl = config('app.frontend_url');
+
+        if (! $frontendUrl) {
+            return null;
+        }
+
+        $parsedUrl = parse_url($frontendUrl);
+        $host = $parsedUrl['host'] ?? null;
+
+        // localhost나 IP 주소는 domain을 null로 유지
+        if (! $host || $host === 'localhost' || filter_var($host, FILTER_VALIDATE_IP)) {
+            return null;
+        }
+
+        $parts = explode('.', $host);
+        if (count($parts) < 2) {
+            return null;
+        }
+
+        // 서브도메인 공유를 위해 베이스 도메인 추출 후 앞에 점(.) 붙임
+        // 예: app.example.com → .example.com
+        // 주의: 이 목록은 완전하지 않음. 프로덕션에서는 명시적 설정 권장
+        $twoLevelTlds = [
+            // 아시아
+            'co.kr', 'co.jp', 'co.th', 'co.id', 'co.in', 'co.nz',
+            'com.cn', 'com.tw', 'com.hk', 'com.sg', 'com.my', 'com.ph', 'com.vn',
+            // 유럽
+            'co.uk', 'org.uk', 'me.uk', 'co.il',
+            // 아메리카
+            'com.br', 'com.mx', 'com.ar', 'com.co',
+            // 오세아니아/아프리카
+            'com.au', 'co.za', 'co.ke',
+        ];
+
+        $lastTwo = implode('.', array_slice($parts, -2));
+
+        if (in_array($lastTwo, $twoLevelTlds, true) && count($parts) >= 3) {
+            return '.' . implode('.', array_slice($parts, -3));
+        }
+
+        return '.' . implode('.', array_slice($parts, -2));
     }
 
     /**
