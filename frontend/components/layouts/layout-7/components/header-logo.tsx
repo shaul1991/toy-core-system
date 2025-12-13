@@ -10,6 +10,7 @@ import {
   SheetBody,
   SheetContent,
   SheetHeader,
+  SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
 import { MegaMenu } from './mega-menu';
@@ -61,8 +62,11 @@ const HeaderLogo = () => {
             className="p-0 gap-0 w-[275px]"
             side="left"
             close={false}
+            aria-describedby={undefined}
           >
-            <SheetHeader className="p-0 space-y-0" />
+            <SheetHeader className="p-0 space-y-0">
+              <SheetTitle className="sr-only">메뉴</SheetTitle>
+            </SheetHeader>
             <SheetBody className="p-0 flex flex-col grow">
               <MegaMenuMobile />
             </SheetBody>
