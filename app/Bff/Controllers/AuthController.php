@@ -8,6 +8,7 @@ use App\Bff\Services\CoreAuthService;
 use App\Domain\Auth\Exceptions\SocialAuthException;
 use App\Domain\Auth\Exceptions\TokenException;
 use App\Http\Controllers\Controller;
+use App\Shared\Exceptions\BadRequestException;
 use App\Shared\Http\ApiResponse;
 use App\Shared\Http\ApiResponseCode;
 use App\Shared\Http\Traits\ApiResponsable;
@@ -49,29 +50,59 @@ final class AuthController extends Controller
      * 소셜 로그인 콜백
      *
      * OAuth 콜백을 처리하고 JWT 토큰을 발급합니다.
-     * 프론트엔드로 토큰 정보와 함께 리다이렉트합니다.
+     * 토큰은 HttpOnly 쿠키로 설정하여 보안을 강화합니다.
      *
+     * @param  Request  $request  OAuth 에러 처리를 위해 유지
      * @param  string  $provider  소셜 제공자 (github, naver, kakao)
      */
-    public function callback(Request $request, string $provider): RedirectResponse|JsonResponse
+    public function callback(Request $request, string $provider): RedirectResponse
     {
+        $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
+        $isSecure = config('app.env') === 'production';
+
         try {
             $tokenDto = $this->coreAuthService->handleSocialCallback($provider);
 
             // 프론트엔드 콜백 URL로 리다이렉트
-            $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
             $callbackUrl = $frontendUrl . '/auth/callback';
 
-            // 토큰 정보를 쿼리 파라미터로 전달 (또는 쿠키로 설정 가능)
-            return redirect()->away($callbackUrl . '?' . http_build_query([
-                'access_token' => $tokenDto->accessToken,
-                'refresh_token' => $tokenDto->refreshToken,
-                'token_type' => $tokenDto->tokenType,
-                'expires_in' => $tokenDto->expiresIn,
-            ]));
+            // 토큰을 HttpOnly, Secure 쿠키로 설정
+            return redirect()->away($callbackUrl)
+                ->withCookie(cookie(
+                    name: 'access_token',
+                    value: $tokenDto->accessToken,
+                    minutes: (int) ceil($tokenDto->expiresIn / 60),
+                    path: '/',
+                    domain: null,
+                    secure: $isSecure,
+                    httpOnly: true,
+                    raw: false,
+                    sameSite: 'Lax'
+                ))
+                ->withCookie(cookie(
+                    name: 'refresh_token',
+                    value: $tokenDto->refreshToken,
+                    minutes: 60 * 24 * 7, // 7일
+                    path: '/',
+                    domain: null,
+                    secure: $isSecure,
+                    httpOnly: true,
+                    raw: false,
+                    sameSite: 'Lax'
+                ))
+                ->withCookie(cookie(
+                    name: 'token_type',
+                    value: $tokenDto->tokenType,
+                    minutes: (int) ceil($tokenDto->expiresIn / 60),
+                    path: '/',
+                    domain: null,
+                    secure: $isSecure,
+                    httpOnly: false, // 프론트엔드에서 읽을 수 있도록
+                    raw: false,
+                    sameSite: 'Lax'
+                ));
         } catch (SocialAuthException $e) {
             // 에러 시 프론트엔드 에러 페이지로 리다이렉트
-            $frontendUrl = config('app.frontend_url', 'http://localhost:3000');
             $errorUrl = $frontendUrl . '/auth/error';
 
             return redirect()->away($errorUrl . '?' . http_build_query([
@@ -85,30 +116,61 @@ final class AuthController extends Controller
      * 토큰 갱신
      *
      * Refresh Token으로 새 Access Token을 발급합니다.
+     * 쿠키 또는 요청 본문에서 refresh_token을 읽습니다.
      */
     public function refresh(Request $request): JsonResponse
     {
-        $refreshToken = $request->input('refresh_token');
+        // 쿠키 또는 요청 본문에서 refresh_token 추출
+        $refreshToken = $request->cookie('refresh_token') ?? $request->input('refresh_token');
 
         if (! $refreshToken) {
             return $this->badRequestResponse('refresh_token이 필요합니다.');
         }
 
+        $isSecure = config('app.env') === 'production';
+
         try {
             $tokenDto = $this->coreAuthService->refreshToken($refreshToken);
 
+            // 새 토큰을 쿠키로 설정하여 응답
             return $this->successResponse([
-                'access_token' => $tokenDto->accessToken,
-                'refresh_token' => $tokenDto->refreshToken,
-                'token_type' => $tokenDto->tokenType,
-                'expires_in' => $tokenDto->expiresIn,
                 'user' => [
                     'id' => $tokenDto->user->id,
                     'name' => $tokenDto->user->name,
                     'email' => $tokenDto->user->email,
                     'avatar' => $tokenDto->user->avatar,
                 ],
-            ]);
+            ])->withCookie(cookie(
+                name: 'access_token',
+                value: $tokenDto->accessToken,
+                minutes: (int) ceil($tokenDto->expiresIn / 60),
+                path: '/',
+                domain: null,
+                secure: $isSecure,
+                httpOnly: true,
+                raw: false,
+                sameSite: 'Lax'
+            ))->withCookie(cookie(
+                name: 'refresh_token',
+                value: $tokenDto->refreshToken,
+                minutes: 60 * 24 * 7, // 7일
+                path: '/',
+                domain: null,
+                secure: $isSecure,
+                httpOnly: true,
+                raw: false,
+                sameSite: 'Lax'
+            ))->withCookie(cookie(
+                name: 'token_type',
+                value: $tokenDto->tokenType,
+                minutes: (int) ceil($tokenDto->expiresIn / 60),
+                path: '/',
+                domain: null,
+                secure: $isSecure,
+                httpOnly: false,
+                raw: false,
+                sameSite: 'Lax'
+            ));
         } catch (TokenException $e) {
             return $this->unauthorizedResponse($e->getMessage());
         }
@@ -118,10 +180,11 @@ final class AuthController extends Controller
      * 토큰 검증
      *
      * Access Token의 유효성을 검증합니다.
+     * 쿠키 또는 Authorization 헤더에서 토큰을 읽습니다.
      */
     public function validate(Request $request): JsonResponse
     {
-        $token = $this->extractBearerToken($request);
+        $token = $this->extractToken($request);
 
         if (! $token) {
             return $this->unauthorizedResponse('인증 토큰이 필요합니다.');
@@ -175,24 +238,28 @@ final class AuthController extends Controller
     /**
      * 로그아웃
      *
-     * 현재 세션의 토큰을 무효화합니다.
+     * 현재 세션의 토큰을 무효화하고 쿠키를 삭제합니다.
      */
     public function logout(Request $request): JsonResponse
     {
-        $accessToken = $this->extractBearerToken($request);
-        $refreshToken = $request->input('refresh_token');
+        $accessToken = $this->extractToken($request);
+        $refreshToken = $request->cookie('refresh_token') ?? $request->input('refresh_token');
 
         if ($accessToken) {
             $this->coreAuthService->logout($accessToken, $refreshToken);
         }
 
-        return $this->successResponse(null, '로그아웃되었습니다.');
+        // 토큰 쿠키 삭제
+        return $this->successResponse(null, '로그아웃되었습니다.')
+            ->withCookie(cookie()->forget('access_token'))
+            ->withCookie(cookie()->forget('refresh_token'))
+            ->withCookie(cookie()->forget('token_type'));
     }
 
     /**
      * 전체 세션 로그아웃
      *
-     * 모든 디바이스에서 로그아웃합니다.
+     * 모든 디바이스에서 로그아웃하고 쿠키를 삭제합니다.
      */
     public function logoutAll(Request $request): JsonResponse
     {
@@ -204,7 +271,11 @@ final class AuthController extends Controller
 
         $this->coreAuthService->logoutAll($user);
 
-        return $this->successResponse(null, '모든 세션에서 로그아웃되었습니다.');
+        // 토큰 쿠키 삭제
+        return $this->successResponse(null, '모든 세션에서 로그아웃되었습니다.')
+            ->withCookie(cookie()->forget('access_token'))
+            ->withCookie(cookie()->forget('refresh_token'))
+            ->withCookie(cookie()->forget('token_type'));
     }
 
     /**
@@ -230,12 +301,17 @@ final class AuthController extends Controller
      *
      * @param  string  $provider  소셜 제공자 (github, naver, kakao)
      */
-    public function link(Request $request, string $provider): RedirectResponse
+    public function link(Request $request, string $provider): RedirectResponse|JsonResponse
     {
         $user = $request->user();
 
+        // 인증되지 않은 사용자는 소셜 계정 연동 불가
+        if (! $user) {
+            return $this->forbiddenResponse('소셜 계정 연동을 위해서는 로그인이 필요합니다.');
+        }
+
         // 연동 모드로 세션에 저장
-        session(['social_link_mode' => true, 'social_link_user_id' => $user?->id]);
+        session(['social_link_mode' => true, 'social_link_user_id' => $user->id]);
 
         $redirectUrl = $this->coreAuthService->getRedirectUrl($provider);
 
@@ -259,22 +335,23 @@ final class AuthController extends Controller
             $this->coreAuthService->unlinkSocialAccount($user, $provider);
 
             return $this->successResponse(null, '소셜 계정 연동이 해제되었습니다.');
-        } catch (SocialAuthException $e) {
+        } catch (BadRequestException|SocialAuthException $e) {
             return $this->badRequestResponse($e->getMessage());
         }
     }
 
     /**
-     * Authorization 헤더에서 Bearer 토큰 추출
+     * 토큰 추출 (Authorization 헤더 우선, 없으면 쿠키에서)
      */
-    private function extractBearerToken(Request $request): ?string
+    private function extractToken(Request $request): ?string
     {
+        // 1. Authorization 헤더에서 Bearer 토큰 추출
         $header = $request->header('Authorization');
-
-        if (! $header || ! str_starts_with($header, 'Bearer ')) {
-            return null;
+        if ($header && str_starts_with($header, 'Bearer ')) {
+            return substr($header, 7);
         }
 
-        return substr($header, 7);
+        // 2. 쿠키에서 access_token 추출
+        return $request->cookie('access_token');
     }
 }

@@ -168,7 +168,7 @@ sequenceDiagram
 현재 인증된 사용자 정보 조회
 
 **Headers:**
-```
+```http
 Authorization: Bearer {access_token}
 ```
 
@@ -193,7 +193,7 @@ Authorization: Bearer {access_token}
 현재 세션 로그아웃
 
 **Headers:**
-```
+```http
 Authorization: Bearer {access_token}
 ```
 

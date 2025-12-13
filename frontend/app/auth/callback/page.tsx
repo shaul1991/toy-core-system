@@ -2,14 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { saveTokens, clearTokens } from '@/lib/api/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+
+/**
+ * 쿠키에서 값 읽기 (클라이언트 사이드)
+ */
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
+}
 
 /**
  * OAuth 콜백 페이지
  *
  * BFF에서 OAuth 인증 완료 후 리다이렉트되는 페이지입니다.
- * URL 파라미터로 전달된 토큰을 저장하고 메인 페이지로 이동합니다.
+ * 서버에서 설정한 HttpOnly 쿠키를 통해 토큰이 저장됩니다.
  */
 export default function AuthCallbackPage() {
   const router = useRouter();
@@ -19,9 +29,7 @@ export default function AuthCallbackPage() {
 
   useEffect(() => {
     const processCallback = async () => {
-      // URL 파라미터에서 토큰 추출
-      const accessToken = searchParams.get('access_token');
-      const refreshToken = searchParams.get('refresh_token');
+      // URL 파라미터에서 에러 확인
       const error = searchParams.get('error');
       const errorMessage = searchParams.get('message');
 
@@ -35,8 +43,11 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      // 토큰 검증
-      if (!accessToken || !refreshToken) {
+      // 토큰 쿠키 확인 (token_type은 httpOnly가 아니므로 읽을 수 있음)
+      const tokenType = getCookie('token_type');
+
+      if (!tokenType) {
+        // 쿠키가 없으면 에러
         setStatus('error');
         setMessage('인증 정보가 올바르지 않습니다.');
         setTimeout(() => {
@@ -45,27 +56,14 @@ export default function AuthCallbackPage() {
         return;
       }
 
-      // 토큰 저장
-      try {
-        saveTokens(accessToken, refreshToken);
-        setStatus('success');
-        setMessage('로그인 성공! 잠시 후 이동합니다...');
+      // 로그인 성공
+      setStatus('success');
+      setMessage('로그인 성공! 잠시 후 이동합니다...');
 
-        // URL에서 토큰 정보 제거 (보안)
-        window.history.replaceState({}, '', '/auth/callback');
-
-        // 메인 페이지로 이동
-        setTimeout(() => {
-          router.push('/');
-        }, 1500);
-      } catch {
-        setStatus('error');
-        setMessage('토큰 저장 중 오류가 발생했습니다.');
-        clearTokens();
-        setTimeout(() => {
-          router.push('/login');
-        }, 3000);
-      }
+      // 메인 페이지로 이동
+      setTimeout(() => {
+        router.push('/');
+      }, 1500);
     };
 
     processCallback();

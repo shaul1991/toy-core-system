@@ -2,16 +2,12 @@
  * API 클라이언트
  *
  * Backend API와 통신하는 클라이언트입니다.
- * - 토큰 관리 (저장, 갱신)
- * - 인증 헤더 자동 추가
+ * - 쿠키 기반 토큰 관리 (HttpOnly 쿠키)
+ * - 인증 자동 처리 (credentials: include)
  * - 에러 핸들링
  */
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
-
-// 토큰 저장소 키
-const ACCESS_TOKEN_KEY = 'access_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
 
 /**
  * API 응답 타입
@@ -57,52 +53,82 @@ export interface User {
 }
 
 /**
- * 토큰 저장
+ * 쿠키에서 값 읽기 (클라이언트 사이드, httpOnly가 아닌 쿠키만)
  */
-export function saveTokens(accessToken: string, refreshToken: string): void {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
-  localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop()?.split(';').shift() || null;
+  return null;
 }
 
 /**
- * 토큰 조회
+ * 쿠키 삭제 (httpOnly가 아닌 쿠키만)
  */
-export function getTokens(): { accessToken: string | null; refreshToken: string | null } {
-  if (typeof window === 'undefined') return { accessToken: null, refreshToken: null };
-  return {
-    accessToken: localStorage.getItem(ACCESS_TOKEN_KEY),
-    refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
-  };
+function deleteCookie(name: string): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
 }
 
 /**
- * 토큰 삭제
+ * 인증 상태 확인 (token_type 쿠키로 확인)
  */
-export function clearTokens(): void {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
+export function isAuthenticated(): boolean {
+  return getCookie('token_type') !== null;
 }
 
 /**
- * Access Token 조회
+ * 토큰 쿠키 삭제 (로그아웃 시 클라이언트 측에서 호출)
+ * 참고: httpOnly 쿠키(access_token, refresh_token)는 서버에서만 삭제 가능
  */
-export function getAccessToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
+export function clearTokenCookie(): void {
+  deleteCookie('token_type');
 }
 
 /**
- * Refresh Token 조회
+ * 토큰 갱신 중인 Promise를 추적하여 동시 갱신 요청 방지
  */
-export function getRefreshToken(): string | null {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+let refreshPromise: Promise<boolean> | null = null;
+
+/**
+ * Access Token 갱신 (서버에서 쿠키 갱신)
+ * 동시 요청 시 하나의 갱신 요청만 실행되도록 보장
+ */
+async function refreshAccessToken(): Promise<boolean> {
+  // 이미 갱신 중이면 기존 Promise 반환
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  // 새로운 갱신 요청 시작
+  refreshPromise = (async () => {
+    try {
+      const response = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        credentials: 'include', // refresh_token 쿠키 전송
+      });
+
+      return response.ok;
+    } catch {
+      return false;
+    } finally {
+      // 갱신 완료 후 Promise 초기화
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 /**
  * API 요청 함수
+ *
+ * credentials: 'include'로 쿠키 자동 전송
  */
 async function request<T>(
   endpoint: string,
@@ -116,61 +142,30 @@ async function request<T>(
     ...options.headers,
   };
 
-  // Access Token이 있으면 헤더에 추가
-  const accessToken = getAccessToken();
-  if (accessToken) {
-    (headers as Record<string, string>)['Authorization'] = `Bearer ${accessToken}`;
-  }
-
   const response = await fetch(url, {
     ...options,
     headers,
+    credentials: 'include', // 쿠키 자동 전송
   });
 
   const data = await response.json();
 
-  // 401 에러이고 refresh token이 있으면 토큰 갱신 시도
+  // 401 에러 처리 - 토큰 만료
   if (response.status === 401 && !endpoint.includes('/auth/refresh')) {
-    const refreshToken = getRefreshToken();
-    if (refreshToken) {
-      const refreshed = await refreshAccessToken(refreshToken);
-      if (refreshed) {
-        // 토큰 갱신 성공 시 원래 요청 재시도
-        return request<T>(endpoint, options);
-      }
+    // 토큰 갱신 시도 (동시 요청 시 하나만 실행됨)
+    const refreshed = await refreshAccessToken();
+    if (refreshed) {
+      // 토큰 갱신 성공 시 원래 요청 재시도
+      return request<T>(endpoint, options);
     }
-    // 토큰 갱신 실패 시 토큰 삭제
-    clearTokens();
+    // 토큰 갱신 실패 시 로그인 페이지로 리다이렉트
+    clearTokenCookie();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
   }
 
   return data;
-}
-
-/**
- * Access Token 갱신
- */
-async function refreshAccessToken(refreshToken: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${API_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ refresh_token: refreshToken }),
-    });
-
-    const data: ApiResponse<TokenResponse> = await response.json();
-
-    if (data.success && data.data) {
-      saveTokens(data.data.access_token, data.data.refresh_token);
-      return true;
-    }
-
-    return false;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -221,10 +216,9 @@ export const authApi = {
     `${API_URL}/auth/${provider}/redirect`,
 
   /**
-   * 토큰 갱신
+   * 토큰 갱신 (서버에서 쿠키 갱신)
    */
-  refresh: (refreshToken: string) =>
-    apiClient.post<TokenResponse>('/auth/refresh', { refresh_token: refreshToken }),
+  refresh: () => apiClient.post('/auth/refresh'),
 
   /**
    * 토큰 검증
@@ -239,15 +233,20 @@ export const authApi = {
   /**
    * 로그아웃
    */
-  logout: () => {
-    const refreshToken = getRefreshToken();
-    return apiClient.post('/auth/logout', { refresh_token: refreshToken });
+  logout: async () => {
+    const result = await apiClient.post('/auth/logout');
+    clearTokenCookie();
+    return result;
   },
 
   /**
    * 전체 세션 로그아웃
    */
-  logoutAll: () => apiClient.post('/auth/logout-all'),
+  logoutAll: async () => {
+    const result = await apiClient.post('/auth/logout-all');
+    clearTokenCookie();
+    return result;
+  },
 
   /**
    * 연동된 소셜 계정 목록
