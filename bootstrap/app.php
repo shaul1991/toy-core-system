@@ -4,6 +4,7 @@ use App\Shared\Exceptions\Handler;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Support\Facades\Route;
 use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -12,6 +13,12 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__.'/../routes/api.php',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
+        then: function () {
+            // Internal 라우트 등록 (/internal/*) - Core Service
+            Route::middleware('api')
+                ->prefix('internal')
+                ->group(base_path('routes/internal.php'));
+        },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         // Trust all proxies (for load balancer / reverse proxy SSL termination)
@@ -20,6 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Domain Service용 미들웨어 등록
         $middleware->alias([
             'user.id' => \App\Http\Middleware\ExtractUserId::class,
+            'bff.auth' => \App\Bff\Middleware\JwtAuthenticate::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
