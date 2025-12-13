@@ -1429,6 +1429,136 @@ KAKAO_REDIRECT_URI=https://your-domain.com/api/auth/kakao/callback
 
 ---
 
+## 운영 체크리스트
+
+프로덕션 환경에서 토큰 인증 시스템 운영 시 확인해야 할 핵심 항목입니다.
+
+### 1. 토큰 발급 및 검증
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| JWT Secret 환경변수 분리 | ✅ | `config/jwt.php:18` | `JWT_SECRET` 환경변수 사용 |
+| 토큰 만료 시간 설정 | ✅ | `JwtService.php:19` | Access: 1시간, Refresh: 7일 |
+| 필수 클레임 검증 | ✅ | `config/jwt.php:148-155` | iss, iat, exp, nbf, sub, jti |
+| Token Version 검증 | ✅ | `JwtService.php:204-207` | 전체 로그아웃 지원 |
+| Blacklist 검증 | ✅ | `JwtService.php:192-195` | 로그아웃된 토큰 거부 |
+| 서명 알고리즘 | ✅ | `config/jwt.php:135` | HS256 (HMAC) |
+
+### 2. 토큰 저장 보안
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| HttpOnly 쿠키 사용 | ✅ | `Bff/AuthController.php:410-424` | `access_token`, `refresh_token` |
+| Secure 쿠키 (HTTPS) | ✅ | `Bff/AuthController.php:328-331` | 환경 설정 또는 자동 감지 |
+| SameSite 속성 | ✅ | `Bff/AuthController.php:423` | `Lax` 설정 |
+| 쿠키 Domain 설정 | ✅ | `Bff/AuthController.php:334-340` | 환경변수 또는 자동 추출 |
+| token_type만 JS 접근 | ✅ | `Bff/AuthController.php:81` | `httpOnly: false` |
+| Refresh Token Redis 저장 | ✅ | `RedisRefreshTokenRepository.php` | TTL 7일 |
+
+### 3. 토큰 갱신 (Refresh Token)
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| Token Rotation | ✅ | `JwtService.php:91` | 갱신 시 새 Refresh Token 발급 |
+| Token Family 관리 | ✅ | `RedisRefreshTokenRepository.php:75-100` | 재사용 감지 시 Family 무효화 |
+| 동시 갱신 요청 방지 (FE) | ✅ | `frontend/lib/api/client.ts:96-131` | `refreshPromise` 싱글톤 |
+| 401 시 자동 갱신 (FE) | ✅ | `frontend/lib/api/client.ts:208-230` | 재시도 로직 포함 |
+| Token Version 검증 | ✅ | `JwtService.php:82-88` | 전체 로그아웃 후 갱신 차단 |
+
+### 4. 토큰 무효화 (Logout/Revoke)
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| 단일 로그아웃 | ✅ | `JwtService.php:128-156` | Access Blacklist + Refresh 삭제 |
+| 전체 로그아웃 | ✅ | `JwtService.php:161-166` | `token_version` 증가 |
+| Access Token Blacklist | ✅ | `RedisRefreshTokenRepository.php:105-108` | TTL = 토큰 남은 시간 |
+| Token Family 무효화 | ✅ | `RedisRefreshTokenRepository.php:75-100` | Lua Script 원자적 실행 |
+| 쿠키 삭제 | ✅ | `Bff/AuthController.php:203-206` | domain/path 일치 |
+
+### 5. 보안 취약점 방지
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| Rate Limiting - 콜백 | ✅ | `routes/api.php:42` | 10회/분 |
+| Rate Limiting - 갱신 | ✅ | `routes/api.php:46` | 30회/분 |
+| Rate Limiting - 연동 | ✅ | `routes/api.php:72` | 5회/분 |
+| CORS 설정 | ✅ | `config/cors.php` | `supports_credentials: true` |
+| Origin 제한 | ✅ | `config/cors.php:22-24` | `FRONTEND_URL`만 허용 |
+| XSS 방지 | ✅ | HttpOnly 쿠키 | JS에서 토큰 접근 불가 |
+| CSRF 방지 | ✅ | `SameSite=Lax` | 크로스 사이트 요청 제한 |
+| 토큰 재사용 감지 | ✅ | `JwtService.php:109-123` | Family 전체 무효화 |
+
+### 6. 에러 처리
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| 통일된 에러 응답 포맷 | ✅ | `Shared/Exceptions/Handler.php` | ApiResponse 형식 |
+| 토큰 만료 예외 | ✅ | `TokenException.php:11-13` | 명확한 메시지 |
+| 토큰 무효 예외 | ✅ | `TokenException.php:16-18` | - |
+| 토큰 재사용 감지 예외 | ✅ | `TokenException.php:31-35` | 보안 경고 포함 |
+| 전체 토큰 무효화 예외 | ✅ | `TokenException.php:37-41` | 재로그인 안내 |
+| Production 예외 마스킹 | ✅ | `Handler.php:107-109` | 상세 정보 숨김 |
+
+### 7. 운영 모니터링
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| Sentry 통합 | ✅ | `bootstrap/app.php:8` | 예외 자동 보고 |
+| 인증 이벤트 로깅 | ⚠️ | - | 추가 권장 |
+| 토큰 재사용 감지 알림 | ⚠️ | - | 보안 이벤트 알림 권장 |
+| Rate Limit 히트 모니터링 | ⚠️ | - | 공격 탐지용 |
+| 로그인 시도 기록 | ⚠️ | - | 감사 로그용 |
+
+### 개선 권장사항
+
+#### 높은 우선순위
+
+| 항목 | 현재 상태 | 권장 조치 |
+|------|----------|----------|
+| 인증 이벤트 로깅 | 미구현 | 로그인/로그아웃/토큰갱신 시 로그 기록 |
+| 토큰 재사용 감지 알림 | 미구현 | Slack/Email 알림 + 관리자 대시보드 |
+| 비정상 로그인 탐지 | 미구현 | 새로운 IP/디바이스에서 로그인 시 알림 |
+
+#### 중간 우선순위
+
+| 항목 | 현재 상태 | 권장 조치 |
+|------|----------|----------|
+| Rate Limit 모니터링 | 미구현 | 429 응답 급증 시 알림 |
+| JWT 키 로테이션 | 미구현 | 주기적 키 교체 전략 수립 |
+| Refresh Token 만료 임박 알림 | 미구현 | 클라이언트에서 사전 갱신 |
+
+#### 낮은 우선순위
+
+| 항목 | 현재 상태 | 권장 조치 |
+|------|----------|----------|
+| 비대칭 키 사용 (RS256) | HS256 사용 | 마이크로서비스 확장 시 고려 |
+| 토큰 압축 | 미구현 | 페이로드가 커지면 고려 |
+
+### 종합 평가
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    토큰 인증 시스템 점검 결과                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ✅ 핵심 보안 기능: 100% 구현                                │
+│     - 토큰 발급/검증/갱신/무효화 완비                        │
+│     - Token Rotation, Blacklist, Version 검증              │
+│     - HttpOnly + Secure + SameSite 쿠키                    │
+│     - Rate Limiting + CORS 설정                            │
+│                                                             │
+│  ⚠️ 운영 모니터링: 부분 구현                                 │
+│     - Sentry 예외 모니터링 ✅                               │
+│     - 인증 이벤트 로깅 ❌ (권장)                             │
+│     - 보안 이벤트 알림 ❌ (권장)                             │
+│                                                             │
+│  📊 전체 점수: 85/100                                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ## 테스트 커버리지
 
 | 영역 | 테스트 수 | 파일 |
