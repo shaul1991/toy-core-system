@@ -15,6 +15,7 @@ export function Footer() {
             >
               shaul1991@gmail.com
             </a>
+            <span className="text-muted-foreground">v{generalSettings.version}</span>
           </div>
           <nav className="flex order-1 md:order-2 gap-4 font-normal text-sm text-muted-foreground">
             <a
