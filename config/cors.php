@@ -20,7 +20,7 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        env('FRONTEND_URL', 'http://localhost:3002'),
+        rtrim(env('FRONTEND_URL', 'http://localhost:3002'), '/'),
     ],
 
     'allowed_origins_patterns' => [],
