@@ -198,11 +198,11 @@ final class AuthController extends Controller
             $this->coreAuthService->logout($accessToken, $refreshToken);
         }
 
-        // 토큰 쿠키 삭제
+        // 토큰 쿠키 삭제 (domain/path 일치 필요)
         return $this->successResponse(null, '로그아웃되었습니다.')
-            ->withCookie(cookie()->forget('access_token'))
-            ->withCookie(cookie()->forget('refresh_token'))
-            ->withCookie(cookie()->forget('token_type'));
+            ->withCookie($this->forgetAuthCookie($request, 'access_token'))
+            ->withCookie($this->forgetAuthCookie($request, 'refresh_token'))
+            ->withCookie($this->forgetAuthCookie($request, 'token_type'));
     }
 
     /**
@@ -220,11 +220,11 @@ final class AuthController extends Controller
 
         $this->coreAuthService->logoutAll($user);
 
-        // 토큰 쿠키 삭제
+        // 토큰 쿠키 삭제 (domain/path 일치 필요)
         return $this->successResponse(null, '모든 세션에서 로그아웃되었습니다.')
-            ->withCookie(cookie()->forget('access_token'))
-            ->withCookie(cookie()->forget('refresh_token'))
-            ->withCookie(cookie()->forget('token_type'));
+            ->withCookie($this->forgetAuthCookie($request, 'access_token'))
+            ->withCookie($this->forgetAuthCookie($request, 'refresh_token'))
+            ->withCookie($this->forgetAuthCookie($request, 'token_type'));
     }
 
     /**
@@ -385,6 +385,30 @@ final class AuthController extends Controller
             domain: $settings['domain'],
             secure: $settings['secure'],
             httpOnly: $httpOnly,
+            raw: false,
+            sameSite: 'Lax'
+        );
+    }
+
+    /**
+     * 인증 쿠키 삭제
+     *
+     * 쿠키 삭제 시 설정했던 domain/path와 일치해야 브라우저에서 삭제됨
+     *
+     * @param  string  $name  쿠키 이름
+     */
+    private function forgetAuthCookie(Request $request, string $name): \Symfony\Component\HttpFoundation\Cookie
+    {
+        $settings = $this->getCookieSettings($request);
+
+        return cookie(
+            name: $name,
+            value: '',
+            minutes: -2628000, // 과거 시간으로 설정하여 삭제
+            path: '/',
+            domain: $settings['domain'],
+            secure: $settings['secure'],
+            httpOnly: true,
             raw: false,
             sameSite: 'Lax'
         );

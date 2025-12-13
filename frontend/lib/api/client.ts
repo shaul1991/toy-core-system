@@ -7,7 +7,12 @@
  * - 에러 핸들링
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+/**
+ * API URL - 환경 변수 또는 상대 경로 사용
+ * 프로덕션에서는 반드시 NEXT_PUBLIC_API_URL이 설정되어야 함
+ * 미설정 시 같은 origin의 /api로 요청
+ */
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 /**
  * API 응답 타입
