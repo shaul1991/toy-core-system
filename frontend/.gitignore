@@ -12,4 +12,5 @@ dist
 dist-ssr
 
 .next
+.env.dev
 .env.production
