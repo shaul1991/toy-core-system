@@ -213,11 +213,20 @@ async function request<T>(
       // 토큰 갱신 성공 시 원래 요청 재시도
       return request<T>(endpoint, options);
     }
-    // 토큰 갱신 실패 시 로그인 페이지로 리다이렉트
+    // 토큰 갱신 실패 시 쿠키 정리 후 에러 응답 반환
+    // 리다이렉트는 호출자가 결정 (폼 상태 보존, 모달 표시 등)
     clearTokenCookie();
-    if (typeof window !== 'undefined') {
-      window.location.href = '/login';
-    }
+    return {
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: '인증이 만료되었습니다. 다시 로그인해주세요.',
+        details: {
+          status: 401,
+          requiresLogin: true,
+        },
+      },
+    };
   }
 
   return data;
