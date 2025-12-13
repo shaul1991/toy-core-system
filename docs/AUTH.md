@@ -2,6 +2,16 @@
 
 Auth 도메인은 JWT 토큰 발급 및 소셜 로그인 연동을 담당하는 원자적 도메인 서비스입니다.
 
+> **📋 표준 스펙 문서**: 이 문서는 인증 시스템의 **단일 정보 소스(Single Source of Truth)**입니다.
+> 구현 또는 운영 시 이 문서의 아키텍처 결정을 따라야 합니다.
+>
+> | 핵심 결정 | 표준 값 |
+> |----------|---------|
+> | **JWT 검증 주체** | BFF Layer (Domain Service는 토큰 발급만 담당) |
+> | **토큰 전송 방식** | HttpOnly Cookie (기본), Authorization 헤더 (폴백) |
+> | **SameSite 정책** | `Lax` (모든 토큰 쿠키에 동일 적용) |
+> | **Refresh Token 저장** | Redis (Token Rotation + Family 관리) |
+
 ## 개요
 
 | 항목 | 설명 |
@@ -357,13 +367,19 @@ app/
 │   └── Auth/
 │       ├── Controllers/
 │       │   └── SocialAuthController.php          # 소셜 인증 컨트롤러
-│       ├── Services/
-│       │   ├── SocialAuthService.php             # 소셜 인증 비즈니스 로직
-│       │   ├── JwtService.php                    # JWT 토큰 관리
-│       │   ├── UserCacheService.php              # 사용자 캐시 서비스
-│       │   └── UserCacheServiceInterface.php     # 캐시 서비스 인터페이스
+│       ├── Contracts/
+│       │   └── AuthEventRepositoryInterface.php  # 인증 이벤트 저장소 인터페이스
+│       ├── DTOs/
+│       │   ├── SocialUserDTO.php                 # 소셜 사용자 정보
+│       │   ├── TokenDTO.php                      # JWT 토큰 정보
+│       │   └── AuthEventDTO.php                  # 인증 이벤트 DTO (MongoDB)
+│       ├── Exceptions/
+│       │   ├── SocialAccountAlreadyLinkedException.php
+│       │   └── InvalidTokenException.php
 │       ├── Models/
 │       │   └── SocialAccount.php                 # 소셜 계정 모델
+│       ├── Observers/
+│       │   └── UserObserver.php                  # 사용자 모델 옵저버
 │       ├── Repositories/
 │       │   ├── SocialAccountRepositoryInterface.php
 │       │   ├── EloquentSocialAccountRepository.php
@@ -372,20 +388,12 @@ app/
 │       │   ├── UserRepositoryInterface.php
 │       │   ├── EloquentUserRepository.php
 │       │   └── MongoAuthEventRepository.php      # MongoDB 인증 이벤트 저장소
-│       ├── Contracts/
-│       │   └── AuthEventRepositoryInterface.php  # 인증 이벤트 저장소 인터페이스
-│       ├── Observers/
-│       │   └── UserObserver.php                  # 사용자 모델 옵저버
-│       ├── DTOs/
-│       │   ├── SocialUserDTO.php                 # 소셜 사용자 정보
-│       │   ├── TokenDTO.php                      # JWT 토큰 정보
-│       │   └── AuthEventDTO.php                  # 인증 이벤트 DTO (MongoDB)
-│       ├── Services/
-│       │   ├── ...
-│       │   └── AuthEventService.php              # 인증 이벤트 로깅 서비스
-│       └── Exceptions/
-│           ├── SocialAccountAlreadyLinkedException.php
-│           └── InvalidTokenException.php
+│       └── Services/
+│           ├── SocialAuthService.php             # 소셜 인증 비즈니스 로직
+│           ├── JwtService.php                    # JWT 토큰 관리
+│           ├── UserCacheService.php              # 사용자 캐시 서비스
+│           ├── UserCacheServiceInterface.php     # 캐시 서비스 인터페이스
+│           └── AuthEventService.php              # 인증 이벤트 로깅 서비스
 │
 ├── Models/
 │   └── User.php                                  # 사용자 모델 (수정)
@@ -523,6 +531,90 @@ db.auth_events.createIndex({ "ip_address": 1, "created_at": -1 });
 // 자동 만료 (90일 후 삭제)
 db.auth_events.createIndex({ "created_at": 1 }, { expireAfterSeconds: 7776000 });
 ```
+
+#### PII 운영 체크리스트
+
+auth_events 컬렉션에는 `ip_address`, `user_agent` 등 개인정보(PII)가 포함되어 있습니다. 다음 운영 지침을 준수해야 합니다.
+
+##### 1. 접근 권한 및 감사
+
+| 역할 | 권한 | 비고 |
+|------|------|------|
+| 보안팀 | 전체 조회/내보내기 | IP, User-Agent 포함 |
+| 운영팀 | 제한된 조회 | IP 마스킹 적용 |
+| 개발팀 | 집계 데이터만 | 개별 레코드 접근 불가 |
+| 감사자 | 읽기 전용 | 내보내기 승인 필요 |
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    접근 감사 요구사항                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  • auth_events 조회 시 MongoDB 감사 로그 활성화 필수          │
+│  • 내보내기 요청은 보안팀 승인 + 사유 기록                     │
+│  • 분기별 접근 권한 검토 및 불필요 권한 제거                   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+##### 2. 데이터 최소화 및 마스킹
+
+| 필드 | 마스킹 수준 | 예시 |
+|------|------------|------|
+| `ip_address` (Level 1) | 마지막 옥텟 마스킹 | `192.168.1.xxx` |
+| `ip_address` (Level 2) | 마지막 2옥텟 마스킹 | `192.168.xxx.xxx` |
+| `user_agent` | 브라우저/OS만 보존 | `Chrome/120 Windows` |
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    금지 사항                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ❌ error_message에 토큰, 쿠키 값 저장 금지                   │
+│  ❌ metadata에 비밀번호, 인증 정보 저장 금지                  │
+│  ❌ provider_token, refresh_token 등 민감 토큰 저장 금지      │
+│                                                             │
+│  위반 시: 즉시 해당 레코드 삭제 + 보안팀 보고                 │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+##### 3. 보존 목적 및 법적 근거
+
+| 항목 | 내용 |
+|------|------|
+| **보존 목적** | 보안 감사, 이상 징후 탐지, 침해 사고 대응 |
+| **법적 근거** | 정보통신망법 제15조 (접속기록 보관의무), GDPR Art.6(1)(f) |
+| **보존 기간** | 90일 (TTL), 법적 요구 시 연장 가능 |
+| **삭제 절차** | MongoDB TTL 인덱스에 의한 자동 삭제 |
+
+##### 4. 백업 및 보존 정렬
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    백업 정책                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  • 일일 백업: 30일 보존 (TTL보다 짧음)                        │
+│  • 백업 데이터도 90일 초과 시 삭제 필수                       │
+│  • 장기 보존 필요 시: 별도 승인 + 암호화 + 접근 로그          │
+│                                                             │
+│  백업 삭제 스크립트:                                         │
+│  - 매주 실행: 90일 초과 백업 데이터 영구 삭제                 │
+│  - 삭제 로그 1년간 보관                                      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+##### 예외 처리 워크플로우
+
+예외적으로 PII 데이터 보존 기간 연장이 필요한 경우:
+
+1. **요청**: 보안팀/법무팀이 사유 및 기간 명시하여 요청
+2. **승인**: CISO 또는 DPO 승인
+3. **구현**: 해당 레코드에 `_preserve_until` 필드 추가
+4. **감사**: 분기별 예외 현황 검토
+5. **삭제**: 보존 기간 종료 시 수동 삭제 + 로그 기록
 
 ---
 
@@ -1103,15 +1195,15 @@ UPDATE users SET token_version = token_version + 1 WHERE id = ?;
 │                                                                         │
 │  [Refresh Token]                                                        │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  저장: HttpOnly + Secure + SameSite=Strict Cookie               │   │
+│  │  저장: HttpOnly + Secure + SameSite=Lax Cookie                  │   │
 │  │  전송: Cookie 자동 전송 (갱신 요청 시)                            │   │
 │  │                                                                  │   │
 │  │  Cookie 설정:                                                    │   │
 │  │  Set-Cookie: refresh_token=xxx;                                 │   │
 │  │              HttpOnly;                                          │   │
 │  │              Secure;                                            │   │
-│  │              SameSite=Strict;                                   │   │
-│  │              Path=/api/auth/refresh;                            │   │
+│  │              SameSite=Lax;                                      │   │
+│  │              Path=/;                                            │   │
 │  │              Max-Age=604800                                     │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
@@ -1127,8 +1219,8 @@ HttpOnly Cookie로 토큰을 전송할 경우 CSRF 공격에 대비해야 합니
 │                      CSRF 보호 전략                                      │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  1. SameSite=Strict 쿠키 속성 사용                                       │
-│     → 크로스 사이트 요청에서 쿠키 전송 차단                               │
+│  1. SameSite=Lax 쿠키 속성 사용                                          │
+│     → 안전한 top-level 네비게이션만 허용, CSRF 공격 완화                  │
 │                                                                         │
 │  2. Double Submit Cookie 패턴                                           │
 │     → CSRF Token을 Cookie + Header 양쪽에 전송, 서버에서 비교            │

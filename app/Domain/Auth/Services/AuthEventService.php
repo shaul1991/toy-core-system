@@ -214,6 +214,9 @@ final class AuthEventService
 
     /**
      * 공통 로깅 메서드
+     *
+     * MongoDB 저장 실패 시에도 인증 플로우에 영향을 주지 않도록
+     * 예외를 잡아서 로컬 로그로 기록하고, 원본 DTO를 반환합니다.
      */
     private function log(
         string $action,
@@ -238,6 +241,24 @@ final class AuthEventService
             userAgent: $request?->userAgent(),
         );
 
-        return $this->repository->create($dto);
+        try {
+            return $this->repository->create($dto);
+        } catch (\Throwable $e) {
+            // MongoDB 저장 실패 시 로컬 로그로 기록하고 예외는 삼킴
+            // 인증 플로우가 로깅 실패로 인해 중단되지 않도록 함
+            Log::error('Failed to persist auth event to MongoDB', [
+                'action' => $action,
+                'result' => $result,
+                'user_id' => $userId,
+                'provider' => $provider,
+                'error_code' => $errorCode,
+                'ip_address' => $request?->ip(),
+                'exception' => $e->getMessage(),
+                'exception_class' => get_class($e),
+            ]);
+
+            // 저장되지 않은 원본 DTO 반환 (id는 null)
+            return $dto;
+        }
     }
 }
