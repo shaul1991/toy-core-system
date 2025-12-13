@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Bff\Controllers;
 
 use App\Bff\Services\CoreAuthService;
+use App\Domain\Auth\Exceptions\SocialAuthException;
 use App\Domain\Auth\Exceptions\TokenException;
+use App\Domain\Auth\Services\AuthEventService;
 use App\Http\Controllers\Controller;
 use App\Shared\Exceptions\BadRequestException;
 use App\Shared\Exceptions\ConflictException;
@@ -24,6 +26,7 @@ use Illuminate\Http\Request;
  * - JWT 토큰 관리 (발급, 검증, 갱신)
  * - 소셜 로그인 흐름 처리
  * - 세션 관리 (로그아웃)
+ * - 인증 이벤트 로깅 (MongoDB)
  */
 final class AuthController extends Controller
 {
@@ -38,6 +41,7 @@ final class AuthController extends Controller
 
     public function __construct(
         private readonly CoreAuthService $coreAuthService,
+        private readonly AuthEventService $authEventService,
     ) {}
 
     /**
@@ -69,6 +73,13 @@ final class AuthController extends Controller
 
         try {
             $tokenDto = $this->coreAuthService->handleSocialCallback($provider);
+
+            // 로그인 이벤트 기록
+            $this->authEventService->logLogin(
+                userId: $tokenDto->user->id,
+                provider: $provider,
+                request: $request,
+            );
 
             // 프론트엔드 콜백 URL로 리다이렉트
             $callbackUrl = $frontendUrl . '/auth/callback';
@@ -109,6 +120,12 @@ final class AuthController extends Controller
             $tokenDto = $this->coreAuthService->refreshToken($refreshToken);
             $accessTokenMinutes = (int) ceil($tokenDto->expiresIn / 60);
 
+            // 토큰 갱신 이벤트 기록
+            $this->authEventService->logTokenRefresh(
+                userId: $tokenDto->user->id,
+                request: $request,
+            );
+
             // 새 토큰을 쿠키로 설정하여 응답
             return $this->successResponse([
                 'user' => [
@@ -122,6 +139,14 @@ final class AuthController extends Controller
                 ->withCookie($this->makeAuthCookie($request, 'refresh_token', $tokenDto->refreshToken, 60 * 24 * 7, true))
                 ->withCookie($this->makeAuthCookie($request, 'token_type', $tokenDto->tokenType, $accessTokenMinutes, false));
         } catch (TokenException $e) {
+            // 토큰 갱신 실패 이벤트 기록
+            $this->authEventService->logTokenRefreshFailed(
+                userId: null,
+                errorCode: 'TOKEN_REFRESH_FAILED',
+                errorMessage: $e->getMessage(),
+                request: $request,
+            );
+
             return $this->unauthorizedResponse($e->getMessage());
         }
     }
@@ -194,9 +219,18 @@ final class AuthController extends Controller
     {
         $accessToken = $this->extractToken($request);
         $refreshToken = $request->cookie('refresh_token') ?? $request->input('refresh_token');
+        $user = $request->user();
 
         if ($accessToken) {
             $this->coreAuthService->logout($accessToken, $refreshToken);
+        }
+
+        // 로그아웃 이벤트 기록
+        if ($user) {
+            $this->authEventService->logLogout(
+                userId: $user->id,
+                request: $request,
+            );
         }
 
         // 토큰 쿠키 삭제 (domain/path 일치 필요)
@@ -220,6 +254,12 @@ final class AuthController extends Controller
         }
 
         $this->coreAuthService->logoutAll($user);
+
+        // 전체 로그아웃 이벤트 기록
+        $this->authEventService->logLogoutAll(
+            userId: $user->id,
+            request: $request,
+        );
 
         // 토큰 쿠키 삭제 (domain/path 일치 필요)
         return $this->successResponse(null, '모든 세션에서 로그아웃되었습니다.')
@@ -283,6 +323,13 @@ final class AuthController extends Controller
 
         try {
             $this->coreAuthService->unlinkSocialAccount($user, $provider);
+
+            // 소셜 계정 연동 해제 이벤트 기록
+            $this->authEventService->logSocialUnlink(
+                userId: $user->id,
+                provider: $provider,
+                request: $request,
+            );
 
             return $this->successResponse(null, '소셜 계정 연동이 해제되었습니다.');
         } catch (BadRequestException|SocialAuthException $e) {

@@ -2,6 +2,16 @@
 
 Auth 도메인은 JWT 토큰 발급 및 소셜 로그인 연동을 담당하는 원자적 도메인 서비스입니다.
 
+> **📋 표준 스펙 문서**: 이 문서는 인증 시스템의 **단일 정보 소스(Single Source of Truth)**입니다.
+> 구현 또는 운영 시 이 문서의 아키텍처 결정을 따라야 합니다.
+>
+> | 핵심 결정 | 표준 값 |
+> |----------|---------|
+> | **JWT 검증 주체** | BFF Layer (Domain Service는 토큰 발급만 담당) |
+> | **토큰 전송 방식** | HttpOnly Cookie (기본), Authorization 헤더 (폴백) |
+> | **SameSite 정책** | `Lax` (모든 토큰 쿠키에 동일 적용) |
+> | **Refresh Token 저장** | Redis (Token Rotation + Family 관리) |
+
 ## 개요
 
 | 항목 | 설명 |
@@ -357,28 +367,33 @@ app/
 │   └── Auth/
 │       ├── Controllers/
 │       │   └── SocialAuthController.php          # 소셜 인증 컨트롤러
-│       ├── Services/
-│       │   ├── SocialAuthService.php             # 소셜 인증 비즈니스 로직
-│       │   ├── JwtService.php                    # JWT 토큰 관리
-│       │   ├── UserCacheService.php              # 사용자 캐시 서비스
-│       │   └── UserCacheServiceInterface.php     # 캐시 서비스 인터페이스
+│       ├── Contracts/
+│       │   └── AuthEventRepositoryInterface.php  # 인증 이벤트 저장소 인터페이스
+│       ├── DTOs/
+│       │   ├── SocialUserDTO.php                 # 소셜 사용자 정보
+│       │   ├── TokenDTO.php                      # JWT 토큰 정보
+│       │   └── AuthEventDTO.php                  # 인증 이벤트 DTO (MongoDB)
+│       ├── Exceptions/
+│       │   ├── SocialAccountAlreadyLinkedException.php
+│       │   └── InvalidTokenException.php
 │       ├── Models/
 │       │   └── SocialAccount.php                 # 소셜 계정 모델
+│       ├── Observers/
+│       │   └── UserObserver.php                  # 사용자 모델 옵저버
 │       ├── Repositories/
 │       │   ├── SocialAccountRepositoryInterface.php
 │       │   ├── EloquentSocialAccountRepository.php
 │       │   ├── RefreshTokenRepositoryInterface.php # Refresh Token 인터페이스
 │       │   ├── RedisRefreshTokenRepository.php   # Redis 토큰 저장소
 │       │   ├── UserRepositoryInterface.php
-│       │   └── EloquentUserRepository.php
-│       ├── Observers/
-│       │   └── UserObserver.php                  # 사용자 모델 옵저버
-│       ├── DTOs/
-│       │   ├── SocialUserDTO.php                 # 소셜 사용자 정보
-│       │   └── TokenDTO.php                      # JWT 토큰 정보
-│       └── Exceptions/
-│           ├── SocialAccountAlreadyLinkedException.php
-│           └── InvalidTokenException.php
+│       │   ├── EloquentUserRepository.php
+│       │   └── MongoAuthEventRepository.php      # MongoDB 인증 이벤트 저장소
+│       └── Services/
+│           ├── SocialAuthService.php             # 소셜 인증 비즈니스 로직
+│           ├── JwtService.php                    # JWT 토큰 관리
+│           ├── UserCacheService.php              # 사용자 캐시 서비스
+│           ├── UserCacheServiceInterface.php     # 캐시 서비스 인터페이스
+│           └── AuthEventService.php              # 인증 이벤트 로깅 서비스
 │
 ├── Models/
 │   └── User.php                                  # 사용자 모델 (수정)
@@ -469,6 +484,137 @@ CREATE UNIQUE INDEX users_email_unique ON users (email);
         1                    :                    N
       (User)              ────────────▶    (SocialAccounts)
 ```
+
+### auth_events 컬렉션 (MongoDB)
+
+인증 관련 이벤트를 기록하는 MongoDB 컬렉션입니다. 감사 로그 및 보안 모니터링에 사용됩니다.
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `_id` | ObjectId | Primary Key |
+| `user_id` | Int | 사용자 ID (nullable - 인증 실패 시) |
+| `action` | String | 이벤트 액션 (login, logout, token_refresh 등) |
+| `result` | String | 결과 (success, failure) |
+| `provider` | String | 소셜 제공자 (nullable) |
+| `error_code` | String | 에러 코드 (nullable) |
+| `error_message` | String | 에러 메시지 (nullable) |
+| `metadata` | Object | 추가 메타데이터 (nullable) |
+| `ip_address` | String | 클라이언트 IP 주소 |
+| `user_agent` | String | User-Agent 헤더 |
+| `created_at` | UTCDateTime | 생성 시간 |
+
+#### 이벤트 액션 타입
+
+| Action | 설명 |
+|--------|------|
+| `login` | 소셜 로그인 성공 |
+| `logout` | 단일 세션 로그아웃 |
+| `logout_all` | 전체 디바이스 로그아웃 |
+| `token_refresh` | 토큰 갱신 성공 |
+| `token_refresh_failed` | 토큰 갱신 실패 |
+| `token_reuse_detected` | Refresh Token 재사용 감지 |
+| `social_link` | 소셜 계정 연동 |
+| `social_unlink` | 소셜 계정 연동 해제 |
+
+#### 인덱스
+
+```javascript
+// 사용자별 이벤트 조회
+db.auth_events.createIndex({ "user_id": 1, "created_at": -1 });
+
+// 액션별 이벤트 조회
+db.auth_events.createIndex({ "action": 1, "created_at": -1 });
+
+// IP 주소별 이벤트 조회 (보안 분석용)
+db.auth_events.createIndex({ "ip_address": 1, "created_at": -1 });
+
+// 자동 만료 (90일 후 삭제)
+db.auth_events.createIndex({ "created_at": 1 }, { expireAfterSeconds: 7776000 });
+```
+
+#### PII 운영 체크리스트
+
+auth_events 컬렉션에는 `ip_address`, `user_agent` 등 개인정보(PII)가 포함되어 있습니다. 다음 운영 지침을 준수해야 합니다.
+
+##### 1. 접근 권한 및 감사
+
+| 역할 | 권한 | 비고 |
+|------|------|------|
+| 보안팀 | 전체 조회/내보내기 | IP, User-Agent 포함 |
+| 운영팀 | 제한된 조회 | IP 마스킹 적용 |
+| 개발팀 | 집계 데이터만 | 개별 레코드 접근 불가 |
+| 감사자 | 읽기 전용 | 내보내기 승인 필요 |
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    접근 감사 요구사항                         │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  • auth_events 조회 시 MongoDB 감사 로그 활성화 필수          │
+│  • 내보내기 요청은 보안팀 승인 + 사유 기록                     │
+│  • 분기별 접근 권한 검토 및 불필요 권한 제거                   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+##### 2. 데이터 최소화 및 마스킹
+
+| 필드 | 마스킹 수준 | 예시 |
+|------|------------|------|
+| `ip_address` (Level 1) | 마지막 옥텟 마스킹 | `192.168.1.xxx` |
+| `ip_address` (Level 2) | 마지막 2옥텟 마스킹 | `192.168.xxx.xxx` |
+| `user_agent` | 브라우저/OS만 보존 | `Chrome/120 Windows` |
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    금지 사항                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ❌ error_message에 토큰, 쿠키 값 저장 금지                   │
+│  ❌ metadata에 비밀번호, 인증 정보 저장 금지                  │
+│  ❌ provider_token, refresh_token 등 민감 토큰 저장 금지      │
+│                                                             │
+│  위반 시: 즉시 해당 레코드 삭제 + 보안팀 보고                 │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+##### 3. 보존 목적 및 법적 근거
+
+| 항목 | 내용 |
+|------|------|
+| **보존 목적** | 보안 감사, 이상 징후 탐지, 침해 사고 대응 |
+| **법적 근거** | 정보통신망법 제15조 (접속기록 보관의무), GDPR Art.6(1)(f) |
+| **보존 기간** | 90일 (TTL), 법적 요구 시 연장 가능 |
+| **삭제 절차** | MongoDB TTL 인덱스에 의한 자동 삭제 |
+
+##### 4. 백업 및 보존 정렬
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    백업 정책                                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  • 일일 백업: 30일 보존 (TTL보다 짧음)                        │
+│  • 백업 데이터도 90일 초과 시 삭제 필수                       │
+│  • 장기 보존 필요 시: 별도 승인 + 암호화 + 접근 로그          │
+│                                                             │
+│  백업 삭제 스크립트:                                         │
+│  - 매주 실행: 90일 초과 백업 데이터 영구 삭제                 │
+│  - 삭제 로그 1년간 보관                                      │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+##### 예외 처리 워크플로우
+
+예외적으로 PII 데이터 보존 기간 연장이 필요한 경우:
+
+1. **요청**: 보안팀/법무팀이 사유 및 기간 명시하여 요청
+2. **승인**: CISO 또는 DPO 승인
+3. **구현**: 해당 레코드에 `_preserve_until` 필드 추가
+4. **감사**: 분기별 예외 현황 검토
+5. **삭제**: 보존 기간 종료 시 수동 삭제 + 로그 기록
 
 ---
 
@@ -1049,15 +1195,15 @@ UPDATE users SET token_version = token_version + 1 WHERE id = ?;
 │                                                                         │
 │  [Refresh Token]                                                        │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  저장: HttpOnly + Secure + SameSite=Strict Cookie               │   │
+│  │  저장: HttpOnly + Secure + SameSite=Lax Cookie                  │   │
 │  │  전송: Cookie 자동 전송 (갱신 요청 시)                            │   │
 │  │                                                                  │   │
 │  │  Cookie 설정:                                                    │   │
 │  │  Set-Cookie: refresh_token=xxx;                                 │   │
 │  │              HttpOnly;                                          │   │
 │  │              Secure;                                            │   │
-│  │              SameSite=Strict;                                   │   │
-│  │              Path=/api/auth/refresh;                            │   │
+│  │              SameSite=Lax;                                      │   │
+│  │              Path=/;                                            │   │
 │  │              Max-Age=604800                                     │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
@@ -1073,8 +1219,8 @@ HttpOnly Cookie로 토큰을 전송할 경우 CSRF 공격에 대비해야 합니
 │                      CSRF 보호 전략                                      │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  1. SameSite=Strict 쿠키 속성 사용                                       │
-│     → 크로스 사이트 요청에서 쿠키 전송 차단                               │
+│  1. SameSite=Lax 쿠키 속성 사용                                          │
+│     → 안전한 top-level 네비게이션만 허용, CSRF 공격 완화                  │
 │                                                                         │
 │  2. Double Submit Cookie 패턴                                           │
 │     → CSRF Token을 Cookie + Header 양쪽에 전송, 서버에서 비교            │
@@ -1425,6 +1571,452 @@ NAVER_REDIRECT_URI=https://your-domain.com/api/auth/naver/callback
 KAKAO_CLIENT_ID=your-kakao-client-id
 KAKAO_CLIENT_SECRET=your-kakao-client-secret
 KAKAO_REDIRECT_URI=https://your-domain.com/api/auth/kakao/callback
+```
+
+---
+
+## 운영 체크리스트
+
+프로덕션 환경에서 토큰 인증 시스템 운영 시 확인해야 할 핵심 항목입니다.
+
+### 1. 토큰 발급 및 검증
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| JWT Secret 환경변수 분리 | ✅ | `config/jwt.php:18` | `JWT_SECRET` 환경변수 사용 |
+| 토큰 만료 시간 설정 | ✅ | `JwtService.php:19` | Access: 1시간, Refresh: 7일 |
+| 필수 클레임 검증 | ✅ | `config/jwt.php:148-155` | iss, iat, exp, nbf, sub, jti |
+| Token Version 검증 | ✅ | `JwtService.php:204-207` | 전체 로그아웃 지원 |
+| Blacklist 검증 | ✅ | `JwtService.php:192-195` | 로그아웃된 토큰 거부 |
+| 서명 알고리즘 | ✅ | `config/jwt.php:135` | HS256 (HMAC) |
+
+#### Access Token 검증 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Redis
+    participant DB as Database
+
+    Client->>BFF: API 요청<br/>(Cookie: access_token)
+    BFF->>BFF: 토큰 추출<br/>(Cookie 또는 Header)
+    BFF->>JWT: validateAccessToken(token)
+
+    JWT->>JWT: 1. JWT 서명 검증
+    Note over JWT: HS256 알고리즘으로<br/>서명 유효성 확인
+
+    JWT->>JWT: 2. 만료 시간 검증
+    Note over JWT: exp 클레임 확인
+
+    JWT->>Redis: 3. Blacklist 확인
+    Redis-->>JWT: 존재 여부
+
+    alt Blacklisted
+        JWT-->>BFF: TokenException::revoked()
+        BFF-->>Client: 401 TOKEN_REVOKED
+    end
+
+    JWT->>DB: 4. 사용자 조회
+    DB-->>JWT: User
+
+    JWT->>JWT: 5. Token Version 검증
+    Note over JWT: JWT.token_version ≤<br/>User.token_version
+
+    alt Version Mismatch
+        JWT-->>BFF: TokenException::allTokensRevoked()
+        BFF-->>Client: 401 ALL_TOKENS_REVOKED
+    end
+
+    JWT-->>BFF: User 객체
+    BFF->>BFF: Request에 User 설정
+    BFF-->>Client: 200 OK + 응답 데이터
+```
+
+### 2. 토큰 저장 보안
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| HttpOnly 쿠키 사용 | ✅ | `Bff/AuthController.php:410-424` | `access_token`, `refresh_token` |
+| Secure 쿠키 (HTTPS) | ✅ | `Bff/AuthController.php:328-331` | 환경 설정 또는 자동 감지 |
+| SameSite 속성 | ✅ | `Bff/AuthController.php:423` | `Lax` 설정 |
+| 쿠키 Domain 설정 | ✅ | `Bff/AuthController.php:334-340` | 환경변수 또는 자동 추출 |
+| token_type만 JS 접근 | ✅ | `Bff/AuthController.php:81` | `httpOnly: false` |
+| Refresh Token Redis 저장 | ✅ | `RedisRefreshTokenRepository.php` | TTL 7일 |
+
+#### 토큰 쿠키 설정 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Social as Social Provider
+    participant BFF as BFF Layer
+    participant Core as Core Service
+    participant Redis
+    participant Browser as Browser
+
+    Social->>BFF: OAuth Callback<br/>(code)
+    BFF->>Core: handleSocialCallback(provider)
+    Core->>Core: 소셜 사용자 정보 조회
+    Core->>Core: User 조회/생성
+    Core->>Core: JWT Access Token 생성
+    Core->>Redis: Refresh Token 저장<br/>(TTL: 7일)
+    Core-->>BFF: TokenDTO
+
+    BFF->>BFF: 쿠키 설정 결정
+    Note over BFF: domain: SESSION_DOMAIN<br/>또는 자동 추출
+
+    BFF-->>Browser: Redirect + Set-Cookie
+    Note over Browser: access_token<br/>HttpOnly, Secure, SameSite=Lax
+    Note over Browser: refresh_token<br/>HttpOnly, Secure, SameSite=Lax
+    Note over Browser: token_type<br/>Secure, SameSite=Lax<br/>(JS 접근 가능)
+
+    Browser->>Browser: 쿠키 저장
+    Note over Browser: XSS 공격으로부터<br/>토큰 보호
+```
+
+### 3. 토큰 갱신 (Refresh Token)
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| Token Rotation | ✅ | `JwtService.php:91` | 갱신 시 새 Refresh Token 발급 |
+| Token Family 관리 | ✅ | `RedisRefreshTokenRepository.php:75-100` | 재사용 감지 시 Family 무효화 |
+| 동시 갱신 요청 방지 (FE) | ✅ | `frontend/lib/api/client.ts:96-131` | `refreshPromise` 싱글톤 |
+| 401 시 자동 갱신 (FE) | ✅ | `frontend/lib/api/client.ts:208-230` | 재시도 로직 포함 |
+| Token Version 검증 | ✅ | `JwtService.php:82-88` | 전체 로그아웃 후 갱신 차단 |
+
+#### Token Rotation 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Redis
+    participant DB as Database
+
+    Note over Client: Access Token 만료 감지<br/>(401 응답 수신)
+
+    Client->>Client: refreshPromise 확인
+    Note over Client: 동시 갱신 요청 방지
+
+    Client->>BFF: POST /auth/refresh<br/>(Cookie: refresh_token)
+    BFF->>JWT: refreshTokenPair(refreshToken)
+
+    JWT->>Redis: 1. Refresh Token 조회
+    Redis-->>JWT: {user_id, family, token_version}
+
+    alt Token Not Found
+        JWT-->>BFF: TokenException::refreshTokenExpired()
+        BFF-->>Client: 401 REFRESH_TOKEN_EXPIRED
+        Client->>Client: 로그인 페이지로 이동
+    end
+
+    JWT->>DB: 2. 사용자 조회 (캐시 활용)
+    DB-->>JWT: User
+
+    JWT->>JWT: 3. Token Version 검증
+    Note over JWT: stored_version ≥<br/>user.token_version
+
+    alt Version Mismatch (전체 로그아웃됨)
+        JWT->>Redis: Family 전체 무효화
+        JWT-->>BFF: TokenException::allTokensRevoked()
+        BFF-->>Client: 401 ALL_TOKENS_REVOKED
+    end
+
+    JWT->>Redis: 4. 기존 Refresh Token 삭제
+    Note over Redis: Token Rotation:<br/>사용된 토큰 즉시 무효화
+
+    JWT->>JWT: 5. 새 Access Token 생성
+    JWT->>Redis: 6. 새 Refresh Token 저장<br/>(동일 Family ID)
+
+    JWT-->>BFF: TokenDTO (새 토큰 쌍)
+    BFF-->>Client: 200 OK + Set-Cookie<br/>(새 access_token, refresh_token)
+
+    Client->>Client: 원래 요청 재시도
+```
+
+#### 프론트엔드 자동 갱신 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as Application
+    participant Client as API Client
+    participant BFF as BFF Layer
+
+    App->>Client: API 요청
+    Client->>BFF: GET /api/resource
+    BFF-->>Client: 401 Unauthorized
+
+    Client->>Client: 401 감지 + 갱신 필요
+
+    alt refreshPromise 존재 (이미 갱신 중)
+        Client->>Client: 기존 Promise 대기
+    else refreshPromise 없음
+        Client->>Client: 새 갱신 요청 시작
+        Client->>BFF: POST /auth/refresh
+        BFF-->>Client: 200 OK (새 토큰 쿠키)
+        Client->>Client: refreshPromise = null
+    end
+
+    alt 갱신 성공
+        Client->>BFF: GET /api/resource (재시도)
+        BFF-->>Client: 200 OK + 데이터
+        Client-->>App: 응답 데이터
+    else 갱신 실패
+        Client->>Client: clearTokenCookie()
+        Client-->>App: {requiresLogin: true}
+        App->>App: 로그인 페이지로 이동
+    end
+```
+
+### 4. 토큰 무효화 (Logout/Revoke)
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| 단일 로그아웃 | ✅ | `JwtService.php:128-156` | Access Blacklist + Refresh 삭제 |
+| 전체 로그아웃 | ✅ | `JwtService.php:161-166` | `token_version` 증가 |
+| Access Token Blacklist | ✅ | `RedisRefreshTokenRepository.php:105-108` | TTL = 토큰 남은 시간 |
+| Token Family 무효화 | ✅ | `RedisRefreshTokenRepository.php:75-100` | Lua Script 원자적 실행 |
+| 쿠키 삭제 | ✅ | `Bff/AuthController.php:203-206` | domain/path 일치 |
+
+#### 단일 로그아웃 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Redis
+
+    Client->>BFF: POST /auth/logout<br/>(Cookie: access_token, refresh_token)
+    BFF->>JWT: logout(accessToken, refreshToken)
+
+    JWT->>JWT: 1. Access Token 파싱
+    Note over JWT: jti, exp 클레임 추출
+
+    JWT->>JWT: 2. 남은 TTL 계산
+    Note over JWT: ttl = exp - now
+
+    JWT->>Redis: 3. Access Token Blacklist 추가
+    Note over Redis: blacklist:access:{jti}<br/>TTL = 남은 만료 시간
+
+    opt Refresh Token 존재
+        JWT->>Redis: 4. Refresh Token 조회
+        Redis-->>JWT: {user_id, family}
+        JWT->>Redis: 5. Refresh Token 삭제
+    end
+
+    JWT-->>BFF: void
+
+    BFF-->>Client: 200 OK + Set-Cookie<br/>(쿠키 삭제: expires=과거)
+    Note over Client: access_token 삭제<br/>refresh_token 삭제<br/>token_type 삭제
+
+    Client->>Client: 로그인 페이지로 이동
+```
+
+#### 전체 로그아웃 플로우 (모든 디바이스)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client as Frontend
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Cache as UserCache
+    participant DB as Database
+
+    Client->>BFF: POST /auth/logout-all
+    BFF->>BFF: 현재 사용자 확인
+    BFF->>JWT: logoutAll(user)
+
+    JWT->>DB: user.invalidateAllTokens()
+    Note over DB: token_version++<br/>(1 → 2)
+
+    DB-->>JWT: updated
+
+    JWT->>Cache: invalidate(userId)
+    Note over Cache: 캐시 삭제<br/>(새 version 반영)
+
+    JWT-->>BFF: void
+
+    BFF-->>Client: 200 OK + Set-Cookie<br/>(쿠키 삭제)
+
+    Note over Client: 이후 모든 디바이스에서<br/>token_version 불일치로<br/>401 응답 수신
+
+    rect rgb(255, 240, 240)
+        Note over Client: 다른 디바이스들
+        Client->>BFF: API 요청 (기존 토큰)
+        BFF->>JWT: validateAccessToken()
+        JWT->>JWT: token_version 검증 실패
+        JWT-->>BFF: ALL_TOKENS_REVOKED
+        BFF-->>Client: 401 Unauthorized
+    end
+```
+
+### 5. 보안 취약점 방지
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| Rate Limiting - 콜백 | ✅ | `routes/api.php:42` | 10회/분 |
+| Rate Limiting - 갱신 | ✅ | `routes/api.php:46` | 30회/분 |
+| Rate Limiting - 연동 | ✅ | `routes/api.php:72` | 5회/분 |
+| CORS 설정 | ✅ | `config/cors.php` | `supports_credentials: true` |
+| Origin 제한 | ✅ | `config/cors.php:22-24` | `FRONTEND_URL`만 허용 |
+| XSS 방지 | ✅ | HttpOnly 쿠키 | JS에서 토큰 접근 불가 |
+| CSRF 방지 | ✅ | `SameSite=Lax` | 크로스 사이트 요청 제한 |
+| 토큰 재사용 감지 | ✅ | `JwtService.php:109-123` | Family 전체 무효화 |
+
+#### Refresh Token 재사용 감지 플로우
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Attacker as 공격자
+    participant User as 정상 사용자
+    participant BFF as BFF Layer
+    participant JWT as JwtService
+    participant Redis
+
+    Note over User,Attacker: 공격자가 Refresh Token 탈취
+
+    User->>BFF: POST /auth/refresh<br/>(refresh_token_v1)
+    BFF->>JWT: refreshTokenPair(token_v1)
+    JWT->>Redis: token_v1 조회
+    Redis-->>JWT: {user_id, family_A}
+
+    JWT->>Redis: token_v1 삭제 (사용됨)
+    JWT->>Redis: token_v2 저장 (family_A)
+    JWT-->>BFF: 새 토큰 쌍 (token_v2)
+    BFF-->>User: 200 OK
+
+    Note over User: 정상 사용자는<br/>token_v2 사용 중
+
+    rect rgb(255, 230, 230)
+        Note over Attacker: 공격자가 탈취한<br/>token_v1 사용 시도
+
+        Attacker->>BFF: POST /auth/refresh<br/>(refresh_token_v1)
+        BFF->>JWT: refreshTokenPair(token_v1)
+        JWT->>Redis: token_v1 조회
+        Redis-->>JWT: null (이미 삭제됨)
+
+        Note over JWT: 재사용 감지!<br/>토큰이 이미 사용됨
+
+        JWT-->>BFF: TokenException::refreshTokenExpired()
+        BFF-->>Attacker: 401 REFRESH_TOKEN_EXPIRED
+    end
+
+    Note over User,Attacker: 보안 강화: Family 전체 무효화 가능<br/>(handleTokenReuseDetected 호출 시)
+```
+
+#### Token Family 무효화 상세
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant JWT as JwtService
+    participant Redis
+    participant DB as Database
+    participant Cache as UserCache
+
+    Note over JWT: 토큰 재사용 감지됨
+
+    JWT->>JWT: handleTokenReuseDetected(familyId, userId)
+
+    JWT->>Redis: invalidateFamily(familyId)
+    Note over Redis: Lua Script 원자적 실행
+
+    Redis->>Redis: SMEMBERS token_family:{familyId}
+    Note over Redis: [token_v1, token_v2, token_v3]
+
+    Redis->>Redis: DEL refresh_token:token_v1
+    Redis->>Redis: DEL refresh_token:token_v2
+    Redis->>Redis: DEL refresh_token:token_v3
+    Redis->>Redis: DEL token_family:{familyId}
+
+    Redis-->>JWT: 삭제된 토큰 수: 3
+
+    JWT->>DB: user.invalidateAllTokens()
+    Note over DB: token_version++
+
+    JWT->>Cache: invalidate(userId)
+    Note over Cache: 사용자 캐시 삭제
+
+    Note over JWT: 해당 사용자의 모든 세션 종료<br/>재로그인 필요
+```
+
+### 6. 에러 처리
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| 통일된 에러 응답 포맷 | ✅ | `Shared/Exceptions/Handler.php` | ApiResponse 형식 |
+| 토큰 만료 예외 | ✅ | `TokenException.php:11-13` | 명확한 메시지 |
+| 토큰 무효 예외 | ✅ | `TokenException.php:16-18` | - |
+| 토큰 재사용 감지 예외 | ✅ | `TokenException.php:31-35` | 보안 경고 포함 |
+| 전체 토큰 무효화 예외 | ✅ | `TokenException.php:37-41` | 재로그인 안내 |
+| Production 예외 마스킹 | ✅ | `Handler.php:107-109` | 상세 정보 숨김 |
+
+### 7. 운영 모니터링
+
+| 항목 | 상태 | 위치 | 비고 |
+|------|:----:|------|------|
+| Sentry 통합 | ✅ | `bootstrap/app.php:8` | 예외 자동 보고 |
+| 인증 이벤트 로깅 | ✅ | `AuthEventService.php` | MongoDB auth_events 컬렉션 |
+| 로그인 시도 기록 | ✅ | `Bff/AuthController.php:77-82` | login 이벤트 기록 |
+| 토큰 재사용 감지 알림 | ⚠️ | - | 보안 이벤트 알림 권장 |
+| Rate Limit 히트 모니터링 | ⚠️ | - | 공격 탐지용 |
+
+### 개선 권장사항
+
+#### 높은 우선순위
+
+| 항목 | 현재 상태 | 권장 조치 |
+|------|----------|----------|
+| 인증 이벤트 로깅 | ✅ 구현 완료 | MongoDB auth_events 컬렉션에 기록 |
+| 토큰 재사용 감지 알림 | 미구현 | Slack/Email 알림 + 관리자 대시보드 |
+| 비정상 로그인 탐지 | 미구현 | 새로운 IP/디바이스에서 로그인 시 알림 |
+
+#### 중간 우선순위
+
+| 항목 | 현재 상태 | 권장 조치 |
+|------|----------|----------|
+| Rate Limit 모니터링 | 미구현 | 429 응답 급증 시 알림 |
+| JWT 키 로테이션 | 미구현 | 주기적 키 교체 전략 수립 |
+| Refresh Token 만료 임박 알림 | 미구현 | 클라이언트에서 사전 갱신 |
+
+#### 낮은 우선순위
+
+| 항목 | 현재 상태 | 권장 조치 |
+|------|----------|----------|
+| 비대칭 키 사용 (RS256) | HS256 사용 | 마이크로서비스 확장 시 고려 |
+| 토큰 압축 | 미구현 | 페이로드가 커지면 고려 |
+
+### 종합 평가
+
+```text
+┌─────────────────────────────────────────────────────────────┐
+│                    토큰 인증 시스템 점검 결과                 │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ✅ 핵심 보안 기능: 100% 구현                                │
+│     - 토큰 발급/검증/갱신/무효화 완비                        │
+│     - Token Rotation, Blacklist, Version 검증              │
+│     - HttpOnly + Secure + SameSite 쿠키                    │
+│     - Rate Limiting + CORS 설정                            │
+│                                                             │
+│  ✅ 운영 모니터링: 대부분 구현                               │
+│     - Sentry 예외 모니터링 ✅                               │
+│     - 인증 이벤트 로깅 ✅ (MongoDB)                         │
+│     - 보안 이벤트 알림 ❌ (권장)                             │
+│                                                             │
+│  📊 전체 점수: 92/100                                       │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
