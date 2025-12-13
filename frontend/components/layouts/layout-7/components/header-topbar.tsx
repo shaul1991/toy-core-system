@@ -1,32 +1,8 @@
-import { ArrowUp, Crown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { UserDropdownMenu } from '../../layout-1/shared/topbar/user-dropdown-menu';
-import Link from 'next/link';
 
 const HeaderTopbar = () => {
   return (
     <div className="flex items-center flex-wrap gap-2 lg:gap-3.5">
-      <div className="flex items-center gap-2.5 lg:gap-3.5">
-        <div className="flex flex-col items-end pt-0.5">
-          <span className="inline-flex gap-0.5 text-foreground font-medium text-xs uppercase">
-            <Crown className="size-3.5" />
-            free
-          </span>
-          <span className="text-secondary-foreground text-xs">
-            182/200 <span className="hidden sm:inline-block">Uploads</span>
-          </span>
-        </div>
-
-        <Button size="sm" asChild>
-          <Link href="#">
-            Upgrade
-            <ArrowUp />
-          </Link>
-        </Button>
-      </div>
-
-      <div className="border-e border-border h-5 mx-1.5 lg:mx-3"></div>
-
       <UserDropdownMenu
         trigger={
           <div className="cursor-pointer size-[34px] rounded-full inline-flex items-center justify-center relative text-lg font-medium border border-input bg-muted">
