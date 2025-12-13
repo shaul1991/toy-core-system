@@ -112,6 +112,7 @@ toy-core-system/
 | 도메인 | 문서 | 설명 |
 |--------|------|------|
 | Auth | [docs/AUTH.md](docs/AUTH.md) | JWT 인증 및 소셜 로그인 연동 |
+| BFF | [docs/BFF.md](docs/BFF.md) | Backend For Frontend - 프론트엔드 API 게이트웨이 |
 | Health | [docs/HEALTH.md](docs/HEALTH.md) | 서비스 연결 상태 확인 (PostgreSQL, Redis 등) |
 | Timer | [docs/TIMER.md](docs/TIMER.md) | 목표 시점까지의 남은 시간 관리 |
 | File | [docs/FILE.md](docs/FILE.md) | MinIO 기반 파일 저장 및 관리 |

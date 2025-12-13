@@ -12,6 +12,9 @@ interface SocialProvider {
   url: string;
 }
 
+// BFF API URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/bff';
+
 // 소셜 로그인 제공자 목록 (추후 확장 가능)
 const socialProviders: SocialProvider[] = [
   {
@@ -23,7 +26,7 @@ const socialProviders: SocialProvider[] = [
       </svg>
     ),
     className: 'bg-[#24292e] hover:bg-[#24292e]/90 text-white',
-    url: '/api/auth/github',
+    url: `${API_URL}/auth/github/redirect`,
   },
   {
     id: 'naver',
@@ -34,7 +37,7 @@ const socialProviders: SocialProvider[] = [
       </svg>
     ),
     className: 'bg-[#03C75A] hover:bg-[#03C75A]/90 text-white',
-    url: '/api/auth/naver',
+    url: `${API_URL}/auth/naver/redirect`,
   },
   {
     id: 'kakao',
@@ -45,7 +48,7 @@ const socialProviders: SocialProvider[] = [
       </svg>
     ),
     className: 'bg-[#FEE500] hover:bg-[#FEE500]/90 text-[#000000]',
-    url: '/api/auth/kakao',
+    url: `${API_URL}/auth/kakao/redirect`,
   },
 ];
 
@@ -67,10 +70,10 @@ export default function LoginPage() {
                 className={`w-full h-12 text-base font-medium ${provider.className}`}
                 asChild
               >
-                <Link href={provider.url}>
+                <a href={provider.url}>
                   {provider.icon}
                   <span className="ml-2">{provider.name}로 계속하기</span>
-                </Link>
+                </a>
               </Button>
             ))}
           </div>
