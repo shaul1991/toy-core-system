@@ -1,3 +1,5 @@
+'use client';
+
 import { Skeleton } from "@/components/ui/skeleton"
 import { Toolbar, ToolbarHeading } from "@/components/layouts/layout-7/components/toolbar";
 
