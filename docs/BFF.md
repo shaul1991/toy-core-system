@@ -17,12 +17,12 @@ BFF(Backend For Frontend)는 프론트엔드와 Core Service 사이의 중간 �
 Frontend (Next.js)
     │
     ▼ HTTP (JSON)
-BFF Layer (/bff/*)
+API Layer (/api/*)      ← BFF 역할
     │ - JWT 검증
     │ - 토큰 관리
     │ - 응답 변환
     ▼ Internal Call
-Core Service (/api/*)
+Internal (/internal/*)   ← Core Service
     │ - Domain 로직
     │ - 데이터베이스
     ▼
@@ -41,7 +41,8 @@ app/Bff/
     └── CoreAuthService.php    # Core Auth Service 클라이언트
 
 routes/
-└── bff.php                    # BFF 라우트 정의
+├── api.php                    # 외부 공개 API (BFF)
+└── internal.php               # 내부 전용 API (Core Service)
 ```
 
 ## API 엔드포인트
@@ -50,8 +51,8 @@ routes/
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/bff/auth/{provider}/redirect` | OAuth 리다이렉트 | 불필요 |
-| GET | `/bff/auth/{provider}/callback` | OAuth 콜백 처리 | 불필요 |
+| GET | `/api/auth/{provider}/redirect` | OAuth 리다이렉트 | 불필요 |
+| GET | `/api/auth/{provider}/callback` | OAuth 콜백 처리 | 불필요 |
 
 **지원 Provider**: `github`, `naver`, `kakao`
 
@@ -59,24 +60,24 @@ routes/
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| POST | `/bff/auth/refresh` | 토큰 갱신 | 불필요 |
-| POST | `/bff/auth/validate` | 토큰 검증 | Bearer Token |
+| POST | `/api/auth/refresh` | 토큰 갱신 | 불필요 |
+| POST | `/api/auth/validate` | 토큰 검증 | Bearer Token |
 
 ### 사용자 관리
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/bff/auth/me` | 현재 사용자 정보 | Bearer Token |
-| POST | `/bff/auth/logout` | 로그아웃 | Bearer Token |
-| POST | `/bff/auth/logout-all` | 전체 세션 로그아웃 | Bearer Token |
+| GET | `/api/auth/me` | 현재 사용자 정보 | Bearer Token |
+| POST | `/api/auth/logout` | 로그아웃 | Bearer Token |
+| POST | `/api/auth/logout-all` | 전체 세션 로그아웃 | Bearer Token |
 
 ### 소셜 계정 관리
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/bff/auth/social-accounts` | 연동된 소셜 계정 목록 | Bearer Token |
-| POST | `/bff/auth/{provider}/link` | 소셜 계정 연동 | Bearer Token |
-| DELETE | `/bff/auth/{provider}/unlink` | 소셜 계정 연동 해제 | Bearer Token |
+| GET | `/api/auth/social-accounts` | 연동된 소셜 계정 목록 | Bearer Token |
+| POST | `/api/auth/{provider}/link` | 소셜 계정 연동 | Bearer Token |
+| DELETE | `/api/auth/{provider}/unlink` | 소셜 계정 연동 해제 | Bearer Token |
 
 ## 인증 흐름
 
@@ -85,19 +86,19 @@ routes/
 ```mermaid
 sequenceDiagram
     participant F as Frontend
-    participant B as BFF
-    participant C as Core Service
+    participant A as API (BFF)
+    participant I as Internal (Core)
     participant O as OAuth Provider
 
-    F->>B: GET /bff/auth/github/redirect
-    B->>F: Redirect to OAuth URL
+    F->>A: GET /api/auth/github/redirect
+    A->>F: Redirect to OAuth URL
     F->>O: User Authentication
-    O->>B: GET /bff/auth/github/callback?code=...
-    B->>C: handleSocialCallback()
-    C->>C: Create/Find User
-    C->>C: Generate Token Pair
-    C-->>B: TokenDTO
-    B->>F: Redirect to /auth/callback?access_token=...&refresh_token=...
+    O->>A: GET /api/auth/github/callback?code=...
+    A->>I: handleSocialCallback()
+    I->>I: Create/Find User
+    I->>I: Generate Token Pair
+    I-->>A: TokenDTO
+    A->>F: Redirect to /auth/callback?access_token=...&refresh_token=...
     F->>F: Save tokens to localStorage
     F->>F: Redirect to Dashboard
 ```
@@ -107,21 +108,21 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant F as Frontend
-    participant B as BFF
-    participant C as Core Service
+    participant A as API (BFF)
+    participant I as Internal (Core)
 
-    F->>B: POST /bff/auth/refresh {refresh_token}
-    B->>C: refreshToken()
-    C->>C: Validate Refresh Token
-    C->>C: Generate New Token Pair
-    C-->>B: TokenDTO
-    B-->>F: {access_token, refresh_token, ...}
+    F->>A: POST /api/auth/refresh {refresh_token}
+    A->>I: refreshToken()
+    I->>I: Validate Refresh Token
+    I->>I: Generate New Token Pair
+    I-->>A: TokenDTO
+    A-->>F: {access_token, refresh_token, ...}
     F->>F: Update stored tokens
 ```
 
 ## API 상세 명세
 
-### POST /bff/auth/refresh
+### POST /api/auth/refresh
 
 토큰 갱신 요청
 
@@ -162,7 +163,7 @@ sequenceDiagram
 }
 ```
 
-### GET /bff/auth/me
+### GET /api/auth/me
 
 현재 인증된 사용자 정보 조회
 
@@ -187,7 +188,7 @@ Authorization: Bearer {access_token}
 }
 ```
 
-### POST /bff/auth/logout
+### POST /api/auth/logout
 
 현재 세션 로그아웃
 
@@ -245,17 +246,17 @@ Route::middleware('bff.auth:optional')->group(function () {
 # Frontend URL (BFF 콜백에서 사용)
 FRONTEND_URL=http://localhost:3000
 
-# Social Login Redirect URI (BFF 경로로 설정)
-GITHUB_REDIRECT_URI=${APP_URL}/bff/auth/github/callback
-NAVER_REDIRECT_URI=${APP_URL}/bff/auth/naver/callback
-KAKAO_REDIRECT_URI=${APP_URL}/bff/auth/kakao/callback
+# Social Login Redirect URI
+GITHUB_REDIRECT_URI=${APP_URL}/api/auth/github/callback
+NAVER_REDIRECT_URI=${APP_URL}/api/auth/naver/callback
+KAKAO_REDIRECT_URI=${APP_URL}/api/auth/kakao/callback
 ```
 
 ### Frontend (.env)
 
 ```env
-# Backend API URL (BFF)
-NEXT_PUBLIC_API_URL=http://localhost:8000/bff
+# Backend API URL
+NEXT_PUBLIC_API_URL=http://localhost:8000/api
 ```
 
 ## 프론트엔드 연동
@@ -298,20 +299,21 @@ if (accessToken && refreshToken) {
 
 | Endpoint | Limit |
 |----------|-------|
-| `/bff/auth/{provider}/callback` | 10회/분 |
-| `/bff/auth/refresh` | 30회/분 |
-| `/bff/auth/me` | 60회/분 |
-| `/bff/auth/logout` | 10회/분 |
-| `/bff/auth/logout-all` | 10회/분 |
-| `/bff/auth/social-accounts` | 60회/분 |
-| `/bff/auth/{provider}/link` | 5회/분 |
-| `/bff/auth/{provider}/unlink` | 5회/분 |
+| `/api/auth/{provider}/callback` | 10회/분 |
+| `/api/auth/refresh` | 30회/분 |
+| `/api/auth/me` | 60회/분 |
+| `/api/auth/logout` | 10회/분 |
+| `/api/auth/logout-all` | 10회/분 |
+| `/api/auth/social-accounts` | 60회/분 |
+| `/api/auth/{provider}/link` | 5회/분 |
+| `/api/auth/{provider}/unlink` | 5회/분 |
 
-## Core Service vs BFF 비교
+## API vs Internal 비교
 
-| 구분 | Core Service (/api/*) | BFF (/bff/*) |
-|------|----------------------|--------------|
-| 대상 | 내부 서비스, BFF | 프론트엔드 |
+| 구분 | Internal (/internal/*) | API (/api/*) |
+|------|------------------------|--------------|
+| 대상 | 내부 서비스 | 프론트엔드 |
+| 역할 | Core Service | BFF |
 | 인증 | X-User-Id 헤더 | Bearer Token (JWT) |
 | 토큰 검증 | 하지 않음 | JWT 검증 |
 | 응답 포맷 | 내부 DTO | 클라이언트 친화적 JSON |
@@ -319,12 +321,12 @@ if (accessToken && refreshToken) {
 
 ## 테스트
 
-### BFF 테스트 파일 위치
+### 테스트 파일 위치
 
 ```
 tests/
 ├── Feature/Bff/
-│   └── AuthControllerTest.php    # BFF Auth 통합 테스트
+│   └── AuthControllerTest.php    # API Auth 통합 테스트
 └── Unit/Bff/
     ├── JwtAuthenticateTest.php   # JWT 미들웨어 테스트
     └── CoreAuthServiceTest.php   # Core Service 클라이언트 테스트

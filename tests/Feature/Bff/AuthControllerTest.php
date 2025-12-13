@@ -10,7 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * BFF Auth Controller 통합 테스트
+ * API Auth Controller 통합 테스트 (BFF 레이어)
  */
 class AuthControllerTest extends TestCase
 {
@@ -41,7 +41,7 @@ class AuthControllerTest extends TestCase
         $tokenDto = $this->jwtService->createTokenPair($this->user);
 
         // When: 토큰 갱신 요청
-        $response = $this->postJson('/bff/auth/refresh', [
+        $response = $this->postJson('/api/auth/refresh', [
             'refresh_token' => $tokenDto->refreshToken,
         ]);
 
@@ -78,7 +78,7 @@ class AuthControllerTest extends TestCase
      */
     public function test_refresh_token_missing(): void
     {
-        $response = $this->postJson('/bff/auth/refresh', []);
+        $response = $this->postJson('/api/auth/refresh', []);
 
         $response->assertStatus(400)
             ->assertJson([
@@ -91,7 +91,7 @@ class AuthControllerTest extends TestCase
      */
     public function test_refresh_token_invalid(): void
     {
-        $response = $this->postJson('/bff/auth/refresh', [
+        $response = $this->postJson('/api/auth/refresh', [
             'refresh_token' => 'invalid-token',
         ]);
 
@@ -110,7 +110,7 @@ class AuthControllerTest extends TestCase
         $tokenDto = $this->jwtService->createTokenPair($this->user);
 
         // When: 토큰 검증 요청
-        $response = $this->postJson('/bff/auth/validate', [], [
+        $response = $this->postJson('/api/auth/validate', [], [
             'Authorization' => "Bearer {$tokenDto->accessToken}",
         ]);
 
@@ -133,7 +133,7 @@ class AuthControllerTest extends TestCase
      */
     public function test_validate_token_missing(): void
     {
-        $response = $this->postJson('/bff/auth/validate');
+        $response = $this->postJson('/api/auth/validate');
 
         $response->assertStatus(401)
             ->assertJson([
@@ -150,7 +150,7 @@ class AuthControllerTest extends TestCase
         $tokenDto = $this->jwtService->createTokenPair($this->user);
 
         // When: 사용자 정보 요청
-        $response = $this->getJson('/bff/auth/me', [
+        $response = $this->getJson('/api/auth/me', [
             'Authorization' => "Bearer {$tokenDto->accessToken}",
         ]);
 
@@ -183,7 +183,7 @@ class AuthControllerTest extends TestCase
      */
     public function test_me_unauthorized(): void
     {
-        $response = $this->getJson('/bff/auth/me');
+        $response = $this->getJson('/api/auth/me');
 
         $response->assertStatus(401)
             ->assertJson([
@@ -200,7 +200,7 @@ class AuthControllerTest extends TestCase
         $tokenDto = $this->jwtService->createTokenPair($this->user);
 
         // When: 로그아웃 요청
-        $response = $this->postJson('/bff/auth/logout', [
+        $response = $this->postJson('/api/auth/logout', [
             'refresh_token' => $tokenDto->refreshToken,
         ], [
             'Authorization' => "Bearer {$tokenDto->accessToken}",
@@ -223,7 +223,7 @@ class AuthControllerTest extends TestCase
         $tokenDto = $this->jwtService->createTokenPair($this->user);
 
         // When: 전체 로그아웃 요청
-        $response = $this->postJson('/bff/auth/logout-all', [], [
+        $response = $this->postJson('/api/auth/logout-all', [], [
             'Authorization' => "Bearer {$tokenDto->accessToken}",
         ]);
 
@@ -235,7 +235,7 @@ class AuthControllerTest extends TestCase
             ]);
 
         // And: 기존 토큰으로 접근 불가
-        $this->getJson('/bff/auth/me', [
+        $this->getJson('/api/auth/me', [
             'Authorization' => "Bearer {$tokenDto->accessToken}",
         ])->assertStatus(401);
     }
@@ -245,7 +245,7 @@ class AuthControllerTest extends TestCase
      */
     public function test_social_redirect(): void
     {
-        $response = $this->get('/bff/auth/github/redirect');
+        $response = $this->get('/api/auth/github/redirect');
 
         // OAuth URL로 리다이렉트
         $response->assertStatus(302);
@@ -257,7 +257,7 @@ class AuthControllerTest extends TestCase
      */
     public function test_unsupported_provider(): void
     {
-        $response = $this->get('/bff/auth/facebook/redirect');
+        $response = $this->get('/api/auth/facebook/redirect');
 
         $response->assertStatus(404);
     }

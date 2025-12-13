@@ -12,8 +12,8 @@ interface SocialProvider {
   url: string;
 }
 
-// BFF API URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/bff';
+// Backend API URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 // 소셜 로그인 제공자 목록 (추후 확장 가능)
 const socialProviders: SocialProvider[] = [

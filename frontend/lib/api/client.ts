@@ -1,13 +1,13 @@
 /**
- * BFF API 클라이언트
+ * API 클라이언트
  *
- * Backend For Frontend API와 통신하는 클라이언트입니다.
+ * Backend API와 통신하는 클라이언트입니다.
  * - 토큰 관리 (저장, 갱신)
  * - 인증 헤더 자동 추가
  * - 에러 핸들링
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/bff';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 // 토큰 저장소 키
 const ACCESS_TOKEN_KEY = 'access_token';

@@ -14,10 +14,10 @@ return Application::configure(basePath: dirname(__DIR__))
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
         then: function () {
-            // BFF 라우트 등록 (/bff/*)
+            // Internal 라우트 등록 (/internal/*) - Core Service
             Route::middleware('api')
-                ->prefix('bff')
-                ->group(base_path('routes/bff.php'));
+                ->prefix('internal')
+                ->group(base_path('routes/internal.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
