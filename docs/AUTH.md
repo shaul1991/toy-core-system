@@ -370,12 +370,19 @@ app/
 │       │   ├── RefreshTokenRepositoryInterface.php # Refresh Token 인터페이스
 │       │   ├── RedisRefreshTokenRepository.php   # Redis 토큰 저장소
 │       │   ├── UserRepositoryInterface.php
-│       │   └── EloquentUserRepository.php
+│       │   ├── EloquentUserRepository.php
+│       │   └── MongoAuthEventRepository.php      # MongoDB 인증 이벤트 저장소
+│       ├── Contracts/
+│       │   └── AuthEventRepositoryInterface.php  # 인증 이벤트 저장소 인터페이스
 │       ├── Observers/
 │       │   └── UserObserver.php                  # 사용자 모델 옵저버
 │       ├── DTOs/
 │       │   ├── SocialUserDTO.php                 # 소셜 사용자 정보
-│       │   └── TokenDTO.php                      # JWT 토큰 정보
+│       │   ├── TokenDTO.php                      # JWT 토큰 정보
+│       │   └── AuthEventDTO.php                  # 인증 이벤트 DTO (MongoDB)
+│       ├── Services/
+│       │   ├── ...
+│       │   └── AuthEventService.php              # 인증 이벤트 로깅 서비스
 │       └── Exceptions/
 │           ├── SocialAccountAlreadyLinkedException.php
 │           └── InvalidTokenException.php
@@ -468,6 +475,53 @@ CREATE UNIQUE INDEX users_email_unique ON users (email);
 
         1                    :                    N
       (User)              ────────────▶    (SocialAccounts)
+```
+
+### auth_events 컬렉션 (MongoDB)
+
+인증 관련 이벤트를 기록하는 MongoDB 컬렉션입니다. 감사 로그 및 보안 모니터링에 사용됩니다.
+
+| 필드 | 타입 | 설명 |
+|------|------|------|
+| `_id` | ObjectId | Primary Key |
+| `user_id` | Int | 사용자 ID (nullable - 인증 실패 시) |
+| `action` | String | 이벤트 액션 (login, logout, token_refresh 등) |
+| `result` | String | 결과 (success, failure) |
+| `provider` | String | 소셜 제공자 (nullable) |
+| `error_code` | String | 에러 코드 (nullable) |
+| `error_message` | String | 에러 메시지 (nullable) |
+| `metadata` | Object | 추가 메타데이터 (nullable) |
+| `ip_address` | String | 클라이언트 IP 주소 |
+| `user_agent` | String | User-Agent 헤더 |
+| `created_at` | UTCDateTime | 생성 시간 |
+
+#### 이벤트 액션 타입
+
+| Action | 설명 |
+|--------|------|
+| `login` | 소셜 로그인 성공 |
+| `logout` | 단일 세션 로그아웃 |
+| `logout_all` | 전체 디바이스 로그아웃 |
+| `token_refresh` | 토큰 갱신 성공 |
+| `token_refresh_failed` | 토큰 갱신 실패 |
+| `token_reuse_detected` | Refresh Token 재사용 감지 |
+| `social_link` | 소셜 계정 연동 |
+| `social_unlink` | 소셜 계정 연동 해제 |
+
+#### 인덱스
+
+```javascript
+// 사용자별 이벤트 조회
+db.auth_events.createIndex({ "user_id": 1, "created_at": -1 });
+
+// 액션별 이벤트 조회
+db.auth_events.createIndex({ "action": 1, "created_at": -1 });
+
+// IP 주소별 이벤트 조회 (보안 분석용)
+db.auth_events.createIndex({ "ip_address": 1, "created_at": -1 });
+
+// 자동 만료 (90일 후 삭제)
+db.auth_events.createIndex({ "created_at": 1 }, { expireAfterSeconds: 7776000 });
 ```
 
 ---
@@ -1820,10 +1874,10 @@ sequenceDiagram
 | 항목 | 상태 | 위치 | 비고 |
 |------|:----:|------|------|
 | Sentry 통합 | ✅ | `bootstrap/app.php:8` | 예외 자동 보고 |
-| 인증 이벤트 로깅 | ⚠️ | - | 추가 권장 |
+| 인증 이벤트 로깅 | ✅ | `AuthEventService.php` | MongoDB auth_events 컬렉션 |
+| 로그인 시도 기록 | ✅ | `Bff/AuthController.php:77-82` | login 이벤트 기록 |
 | 토큰 재사용 감지 알림 | ⚠️ | - | 보안 이벤트 알림 권장 |
 | Rate Limit 히트 모니터링 | ⚠️ | - | 공격 탐지용 |
-| 로그인 시도 기록 | ⚠️ | - | 감사 로그용 |
 
 ### 개선 권장사항
 
@@ -1831,7 +1885,7 @@ sequenceDiagram
 
 | 항목 | 현재 상태 | 권장 조치 |
 |------|----------|----------|
-| 인증 이벤트 로깅 | 미구현 | 로그인/로그아웃/토큰갱신 시 로그 기록 |
+| 인증 이벤트 로깅 | ✅ 구현 완료 | MongoDB auth_events 컬렉션에 기록 |
 | 토큰 재사용 감지 알림 | 미구현 | Slack/Email 알림 + 관리자 대시보드 |
 | 비정상 로그인 탐지 | 미구현 | 새로운 IP/디바이스에서 로그인 시 알림 |
 
@@ -1863,12 +1917,12 @@ sequenceDiagram
 │     - HttpOnly + Secure + SameSite 쿠키                    │
 │     - Rate Limiting + CORS 설정                            │
 │                                                             │
-│  ⚠️ 운영 모니터링: 부분 구현                                 │
+│  ✅ 운영 모니터링: 대부분 구현                               │
 │     - Sentry 예외 모니터링 ✅                               │
-│     - 인증 이벤트 로깅 ❌ (권장)                             │
+│     - 인증 이벤트 로깅 ✅ (MongoDB)                         │
 │     - 보안 이벤트 알림 ❌ (권장)                             │
 │                                                             │
-│  📊 전체 점수: 85/100                                       │
+│  📊 전체 점수: 92/100                                       │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 ```

@@ -2,12 +2,16 @@
 
 namespace App\Providers;
 
+use App\Domain\Auth\Contracts\AuthEventRepositoryInterface;
 use App\Domain\Auth\Observers\UserObserver;
+use App\Domain\Auth\Repositories\MongoAuthEventRepository;
 use App\Domain\Auth\Repositories\RedisRefreshTokenRepository;
 use App\Domain\Auth\Repositories\RefreshTokenRepositoryInterface;
+use App\Domain\Auth\Services\AuthEventService;
 use App\Domain\Auth\Services\UserCacheService;
 use App\Domain\Auth\Services\UserCacheServiceInterface;
 use App\Models\User;
+use App\Shared\Database\MongoDB\MongoConnection;
 use App\Repositories\CachedFileRepository;
 use App\Repositories\CachedTimerRepository;
 use App\Repositories\EloquentNotificationLogRepository;
@@ -47,6 +51,19 @@ class AppServiceProvider extends ServiceProvider
             UserCacheServiceInterface::class,
             UserCacheService::class
         );
+
+        // Auth - AuthEvent Repository (MongoDB)
+        $this->app->bind(
+            AuthEventRepositoryInterface::class,
+            MongoAuthEventRepository::class
+        );
+
+        // Auth - AuthEvent Service
+        $this->app->singleton(AuthEventService::class, function ($app) {
+            return new AuthEventService(
+                $app->make(AuthEventRepositoryInterface::class)
+            );
+        });
 
         // EloquentTimerRepository를 싱글톤으로 등록
         $this->app->singleton(EloquentTimerRepository::class);
