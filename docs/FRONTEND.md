@@ -70,6 +70,7 @@ Next.js 기반의 프론트엔드 애플리케이션입니다. Metronic v9.3.8 �
 |-----|----------|------|-----------|
 | `/` | `app/page.tsx` | 홈/대시보드 페이지 | 모든 사용자 |
 | `/login` | `app/login/page.tsx` | 소셜 로그인 페이지 (GitHub, Naver, Kakao) | 게스트 전용 |
+| `/mypage` | `app/mypage/page.tsx` | 마이페이지 (프로필, 소셜 계정 관리) | 인증 필요 |
 | `/auth/callback` | `app/auth/callback/page.tsx` | OAuth 콜백 처리 페이지 | 모든 사용자 |
 | `/auth/error` | `app/auth/error/page.tsx` | 인증 에러 표시 페이지 | 모든 사용자 |
 
@@ -87,7 +88,6 @@ Next.js 기반의 프론트엔드 애플리케이션입니다. Metronic v9.3.8 �
 
 | URL 패턴 | 설명 | 접근 권한 |
 |----------|------|-----------|
-| `/mypage/*` | 마이페이지 및 하위 경로 | 인증 필요 |
 | `/settings/*` | 설정 페이지 및 하위 경로 | 인증 필요 |
 | `/dashboard/*` | 대시보드 및 하위 경로 | 인증 필요 |
 
@@ -143,6 +143,44 @@ Next.js 기반의 프론트엔드 애플리케이션입니다. Metronic v9.3.8 �
   | `SOCIAL_EMAIL_REQUIRED` | 이메일 권한 필요 |
   | `UNKNOWN_ERROR` | 알 수 없는 오류 |
 
+#### 마이페이지 (`/mypage`)
+
+- **파일**: `app/mypage/page.tsx`, `app/mypage/layout.tsx`
+- **타입**: 클라이언트 컴포넌트 (`'use client'`)
+- **접근 권한**: 인증 필요 (비로그인 시 `/login?redirect=/mypage`로 리다이렉트)
+- **용도**: 사용자 계정 정보 확인 및 관리
+- **주요 기능**:
+  1. **프로필 섹션**
+     - 사용자 아바타 (이미지 또는 이니셜)
+     - 이름, 이메일 표시
+     - 이메일 인증 배지
+     - 가입일 정보
+  2. **소셜 계정 연동 관리**
+     - 연동된 소셜 계정 목록 (GitHub, Naver, Kakao)
+     - 각 계정의 이메일 및 연동일 표시
+     - 소셜 계정 연동 해제 기능
+     - 최소 1개 계정 유지 제약
+     - 확인 다이얼로그로 안전한 연동 해제
+  3. **계정 관리**
+     - 현재 기기에서 로그아웃
+     - 모든 기기에서 로그아웃
+     - 계정 삭제 (UI 준비, 기능은 향후 구현)
+- **사용 API**:
+  | API | 용도 |
+  |-----|------|
+  | `GET /api/auth/me` | 사용자 정보 조회 |
+  | `GET /api/auth/social-accounts` | 연동된 소셜 계정 목록 |
+  | `DELETE /api/auth/{provider}/unlink` | 소셜 계정 연동 해제 |
+  | `POST /api/auth/logout` | 로그아웃 |
+  | `POST /api/auth/logout-all` | 전체 로그아웃 |
+- **UI 컴포넌트**: `Card`, `Avatar`, `Button`, `Badge`, `Separator`, `Skeleton`, `AlertDialog`, Toast (Sonner)
+- **특징**:
+  - 반응형 디자인 (모바일/데스크톱 대응)
+  - 로딩 스켈레톤 UI
+  - Toast 알림으로 사용자 피드백
+  - 다크모드 지원
+  - 네비게이션: 헤더 사용자 드롭다운 메뉴에서 접근
+
 ---
 
 ## 디렉토리 구조
@@ -158,6 +196,9 @@ frontend/
 │   │   ├── callback/page.tsx     # OAuth 콜백 처리
 │   │   └── error/page.tsx        # 인증 에러 페이지
 │   ├── login/page.tsx            # 로그인 페이지
+│   ├── mypage/                   # 마이페이지
+│   │   ├── page.tsx              # 마이페이지 메인
+│   │   └── layout.tsx            # 메타데이터
 │   ├── layout.tsx                # 루트 레이아웃
 │   ├── page.tsx                  # 홈 페이지
 │   └── favicon.ico               # 파비콘
