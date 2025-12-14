@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/auth-provider';
 import { authApi, User } from '@/lib/api/client';
@@ -33,15 +33,22 @@ interface SocialAccount {
   created_at: string;
 }
 
+// Backend API URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+
+// 모든 소셜 로그인 제공자 목록
+const ALL_PROVIDERS: SocialProvider[] = ['github', 'naver', 'kakao'];
+
 // Provider 타입 가드
 function isValidProvider(provider: string): provider is SocialProvider {
-  return ['github', 'naver', 'kakao'].includes(provider);
+  return (ALL_PROVIDERS as readonly string[]).includes(provider);
 }
 
-const PROVIDER_INFO: Record<SocialProvider, { name: string; color: string; icon: React.ReactNode }> = {
+const PROVIDER_INFO: Record<SocialProvider, { name: string; color: string; icon: React.ReactNode; linkUrl: string }> = {
   github: {
     name: 'GitHub',
     color: 'bg-[#24292e]',
+    linkUrl: `${API_URL}/auth/github/redirect`,
     icon: (
       <svg className="size-4" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
@@ -51,6 +58,7 @@ const PROVIDER_INFO: Record<SocialProvider, { name: string; color: string; icon:
   naver: {
     name: '네이버',
     color: 'bg-[#03C75A]',
+    linkUrl: `${API_URL}/auth/naver/redirect`,
     icon: (
       <svg className="size-4" viewBox="0 0 24 24" fill="currentColor">
         <path d="M16.273 12.845L7.376 0H0v24h7.726V11.156L16.624 24H24V0h-7.727v12.845z"/>
@@ -60,6 +68,7 @@ const PROVIDER_INFO: Record<SocialProvider, { name: string; color: string; icon:
   kakao: {
     name: '카카오',
     color: 'bg-[#FEE500]',
+    linkUrl: `${API_URL}/auth/kakao/redirect`,
     icon: (
       <svg className="size-4" viewBox="0 0 24 24" fill="currentColor">
         <path d="M12 3c5.799 0 10.5 3.664 10.5 8.185 0 4.52-4.701 8.184-10.5 8.184a13.5 13.5 0 01-1.727-.11l-4.408 2.883c-.501.265-.678.236-.472-.413l.892-3.678c-2.88-1.46-4.785-3.99-4.785-6.866C1.5 6.665 6.201 3 12 3zm5.907 8.06l1.47-1.424a.472.472 0 00-.656-.678l-1.928 1.866V9.282a.472.472 0 00-.944 0v2.557a.471.471 0 000 .222v2.218a.472.472 0 00.944 0v-1.58l.478-.464 1.596 2.232a.472.472 0 00.764-.547l-1.724-2.36zm-4.678-1.832l-1.286 3.863c-.14.421.628.61.765.192l.233-.725h1.593l.232.725c.137.418.905.229.766-.192l-1.286-3.863c-.18-.543-.836-.543-1.017 0zm.284 2.403l.508-1.584.508 1.584h-1.016zM8.992 9.754a.472.472 0 00-.472.472v1.619L6.545 9.847a.472.472 0 00-.756.378v4.054a.472.472 0 00.944 0v-1.984l1.975 2.363a.472.472 0 00.756-.378V10.226a.472.472 0 00-.472-.472zm-4.63 0a.472.472 0 00-.472.472v4.054a.472.472 0 00.944 0V10.226a.472.472 0 00-.472-.472z"/>
@@ -81,6 +90,12 @@ export default function MyPage() {
   const [unlinkDialogOpen, setUnlinkDialogOpen] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<SocialProvider | null>(null);
   const [isUnlinking, setIsUnlinking] = useState(false);
+
+  // 연동되지 않은 제공자 목록 계산
+  const unlinkedProviders = useMemo(() => {
+    const linkedProviders = socialAccounts.map(account => account.provider);
+    return ALL_PROVIDERS.filter(provider => !linkedProviders.includes(provider));
+  }, [socialAccounts]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -128,8 +143,8 @@ export default function MyPage() {
   const handleLogout = async () => {
     const response = await authApi.logout();
     if (response.success) {
-      toast.success('로그아웃되었습니다.');
-      router.push('/');
+      // 페이지 새로고침으로 인증 상태 완전히 초기화
+      window.location.href = '/';
     } else {
       toast.error('로그아웃에 실패했습니다.');
     }
@@ -138,8 +153,8 @@ export default function MyPage() {
   const handleLogoutAll = async () => {
     const response = await authApi.logoutAll();
     if (response.success) {
-      toast.success('모든 기기에서 로그아웃되었습니다.');
-      router.push('/');
+      // 페이지 새로고침으로 인증 상태 완전히 초기화
+      window.location.href = '/';
     } else {
       toast.error('로그아웃에 실패했습니다.');
     }
@@ -148,6 +163,17 @@ export default function MyPage() {
   const openUnlinkDialog = (provider: SocialProvider) => {
     setSelectedProvider(provider);
     setUnlinkDialogOpen(true);
+  };
+
+  const handleLinkSocialAccount = (provider: SocialProvider) => {
+    // OAuth 완료 후 마이페이지로 돌아오기 위해 redirect 경로 저장
+    try {
+      sessionStorage.setItem('auth_redirect', '/mypage');
+    } catch {
+      // 스토리지 접근 실패 시에도 OAuth 진행 (redirect 경로만 누락)
+    }
+    // OAuth 인증 시작
+    window.location.href = PROVIDER_INFO[provider].linkUrl;
   };
 
   const handleUnlinkSocialAccount = async () => {
@@ -290,7 +316,7 @@ export default function MyPage() {
         {/* 연동된 소셜 계정 */}
         <Card>
           <CardHeader>
-            <CardTitle>소셜 계정 연동</CardTitle>
+            <CardTitle>연동된 소셜 계정</CardTitle>
             <CardDescription>
               연동된 소셜 계정을 관리하세요. 최소 1개의 계정은 유지되어야 합니다.
             </CardDescription>
@@ -336,6 +362,50 @@ export default function MyPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* 추가 연동 가능한 소셜 계정 */}
+        {unlinkedProviders.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle>추가 연동 가능한 계정</CardTitle>
+              <CardDescription>
+                아래 소셜 계정을 추가로 연동하여 더 편리하게 로그인할 수 있습니다.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {unlinkedProviders.map((provider) => {
+                  const providerInfo = PROVIDER_INFO[provider];
+                  return (
+                    <div
+                      key={provider}
+                      className="flex items-center justify-between p-4 border rounded-lg border-dashed"
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className={`p-2 rounded-lg ${providerInfo.color} text-white`}>
+                          {providerInfo.icon}
+                        </div>
+                        <div>
+                          <p className="font-medium">{providerInfo.name}</p>
+                          <p className="text-sm text-muted-foreground">
+                            아직 연동되지 않음
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleLinkSocialAccount(provider)}
+                      >
+                        연동하기
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* 계정 관리 */}
         <Card>
