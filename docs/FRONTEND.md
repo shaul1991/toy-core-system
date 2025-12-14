@@ -71,6 +71,10 @@ frontend/
 │   │   ├── layout-1/             # 레이아웃 1
 │   │   ├── layout-2/             # 레이아웃 2
 │   │   └── ...
+│   ├── auth/                     # 인증 관련 페이지
+│   │   ├── callback/page.tsx     # OAuth 콜백 처리
+│   │   └── error/page.tsx        # 인증 에러 페이지
+│   ├── login/page.tsx            # 로그인 페이지
 │   ├── layout.tsx                # 루트 레이아웃
 │   ├── page.tsx                  # 홈 페이지
 │   └── favicon.ico               # 파비콘
@@ -82,6 +86,8 @@ frontend/
 │   │   │   ├── shared/           # 공유 컴포넌트
 │   │   │   └── index.tsx
 │   │   └── ...
+│   ├── providers/                # Context Providers
+│   │   └── auth-provider.tsx     # 인증 상태 Provider
 │   ├── ui/                       # UI 컴포넌트 (ReUI 기반)
 │   └── screen-loader.tsx         # 화면 로더
 │
@@ -101,6 +107,9 @@ frontend/
 │   └── use-viewport.ts           # 뷰포트 크기
 │
 ├── lib/                          # 유틸리티 함수
+│   ├── api/                      # API 클라이언트
+│   │   ├── client.ts             # 클라이언트 사이드 API
+│   │   └── server.ts             # 서버 사이드 API (SSR)
 │   ├── dom.ts                    # DOM 유틸리티
 │   ├── helpers.ts                # 헬퍼 함수
 │   └── utils.ts                  # 일반 유틸리티
@@ -112,6 +121,7 @@ frontend/
 │   └── demos/                    # 데모 스타일
 │
 ├── public/                       # 정적 파일
+├── middleware.ts                 # Next.js 라우트 보호 미들웨어
 ├── next.config.mjs               # Next.js 설정
 ├── tsconfig.json                 # TypeScript 설정
 ├── postcss.config.cjs            # PostCSS 설정
@@ -188,6 +198,118 @@ NEXT_PUBLIC_BASE_PATH=/
 | `.env.local` | 로컬 개발 (gitignore) |
 | `.env.staging` | 스테이징 환경 |
 | `.env.production` | 프로덕션 환경 |
+
+## 인증 시스템
+
+### 인증 상태 관리
+
+프론트엔드에서 인증 상태는 다음과 같이 관리됩니다:
+
+| 구성 요소 | 위치 | 역할 |
+|-----------|------|------|
+| `AuthProvider` | `components/providers/auth-provider.tsx` | React Context로 인증 상태 제공 |
+| `getServerUser()` | `lib/api/server.ts` | SSR에서 사용자 정보 조회 |
+| `authApi` | `lib/api/client.ts` | 클라이언트 인증 API |
+| `middleware.ts` | `frontend/middleware.ts` | 라우트 보호 미들웨어 |
+
+### 인증 Provider 사용
+
+```tsx
+// 컴포넌트에서 인증 상태 접근
+import { useAuth } from '@/components/providers/auth-provider';
+
+function MyComponent() {
+  const { isLoggedIn, user, isAdmin } = useAuth();
+
+  if (!isLoggedIn) {
+    return <LoginPrompt />;
+  }
+
+  return <div>환영합니다, {user?.name}님!</div>;
+}
+```
+
+### 토큰 관리
+
+인증 토큰은 HttpOnly 쿠키로 관리됩니다:
+
+| 쿠키 | 타입 | 용도 |
+|------|------|------|
+| `access_token` | HttpOnly | JWT 액세스 토큰 |
+| `refresh_token` | HttpOnly | 리프레시 토큰 (7일) |
+| `token_type` | 일반 | 인증 상태 확인용 (클라이언트 접근 가능) |
+
+---
+
+## 라우트 보호 (Middleware)
+
+Next.js Middleware를 사용하여 인증 상태에 따른 라우트 접근을 제어합니다.
+
+### 파일 위치
+
+```
+frontend/middleware.ts
+```
+
+### 보호 유형
+
+| 유형 | 경로 | 동작 |
+|------|------|------|
+| **게스트 전용** | `/login` | 로그인한 사용자는 `/`로 리다이렉트 |
+| **인증 필요** | `/mypage/*`, `/settings/*`, `/dashboard/*` | 비로그인 사용자는 `/login`으로 리다이렉트 |
+
+### 작동 방식
+
+```typescript
+// 게스트 전용 경로 (로그인한 사용자 접근 불가)
+const GUEST_ONLY_PATHS = ['/login'];
+
+// 인증 필요 경로 (비로그인 사용자 접근 불가)
+const AUTH_REQUIRED_PATTERNS: RegExp[] = [
+  /^\/mypage(\/.*)?$/,    // /mypage 및 하위 경로
+  /^\/settings(\/.*)?$/,  // /settings 및 하위 경로
+  /^\/dashboard(\/.*)?$/, // /dashboard 및 하위 경로
+];
+```
+
+### 리다이렉트 후 원래 페이지로 돌아가기
+
+비로그인 사용자가 보호된 경로에 접근하면:
+
+1. `/login?redirect=/original-path`로 리다이렉트
+2. 로그인 페이지에서 `redirect` 파라미터를 `sessionStorage`에 저장
+3. OAuth 인증 완료 후 콜백 페이지에서 저장된 경로로 리다이렉트
+
+```typescript
+// 로그인 페이지에서 redirect 저장
+useEffect(() => {
+  const redirect = searchParams.get('redirect');
+  if (redirect && redirect.startsWith('/')) {
+    sessionStorage.setItem('auth_redirect', redirect);
+  }
+}, [searchParams]);
+```
+
+### 새로운 보호 경로 추가
+
+`middleware.ts`에서 패턴을 추가합니다:
+
+```typescript
+// 예: /profile 경로 보호 추가
+const AUTH_REQUIRED_PATTERNS: RegExp[] = [
+  /^\/mypage(\/.*)?$/,
+  /^\/settings(\/.*)?$/,
+  /^\/dashboard(\/.*)?$/,
+  /^\/profile(\/.*)?$/,  // 추가
+];
+```
+
+### 보안 고려사항
+
+- **외부 URL 리다이렉트 방지**: `redirect` 파라미터는 `/`로 시작하고 `//`로 시작하지 않는 상대 경로만 허용
+- **쿠키 기반 인증 확인**: `access_token` 또는 `token_type` 쿠키 존재 여부로 인증 상태 판단
+
+---
 
 ## 백엔드 연동
 
