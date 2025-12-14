@@ -70,11 +70,11 @@ const PROVIDER_INFO: Record<SocialProvider, { name: string; color: string; icon:
 
 export default function MyPage() {
   const router = useRouter();
-  const { user: contextUser, isLoggedIn } = useAuth();
+  const { isLoggedIn } = useAuth();
 
-  // 초기 캐시 데이터(contextUser)를 보여주고, API로 최신 데이터를 가져옴
-  // contextUser는 SSR 시점의 스냅샷이므로 클라이언트에서 최신화 필요
-  const [user, setUser] = useState<User | null>(contextUser);
+  // API에서 최신 사용자 정보를 가져옴
+  // null로 초기화하고 useEffect에서 fetchData 호출
+  const [user, setUser] = useState<User | null>(null);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
