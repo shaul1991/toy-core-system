@@ -33,16 +33,16 @@ interface SocialAccount {
   created_at: string;
 }
 
-// Provider 타입 가드
-function isValidProvider(provider: string): provider is SocialProvider {
-  return ['github', 'naver', 'kakao'].includes(provider);
-}
-
 // Backend API URL
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
 // 모든 소셜 로그인 제공자 목록
 const ALL_PROVIDERS: SocialProvider[] = ['github', 'naver', 'kakao'];
+
+// Provider 타입 가드
+function isValidProvider(provider: string): provider is SocialProvider {
+  return (ALL_PROVIDERS as readonly string[]).includes(provider);
+}
 
 const PROVIDER_INFO: Record<SocialProvider, { name: string; color: string; icon: React.ReactNode; linkUrl: string }> = {
   github: {
@@ -143,7 +143,6 @@ export default function MyPage() {
   const handleLogout = async () => {
     const response = await authApi.logout();
     if (response.success) {
-      toast.success('로그아웃되었습니다.');
       // 페이지 새로고침으로 인증 상태 완전히 초기화
       window.location.href = '/';
     } else {
@@ -154,7 +153,6 @@ export default function MyPage() {
   const handleLogoutAll = async () => {
     const response = await authApi.logoutAll();
     if (response.success) {
-      toast.success('모든 기기에서 로그아웃되었습니다.');
       // 페이지 새로고침으로 인증 상태 완전히 초기화
       window.location.href = '/';
     } else {
@@ -169,7 +167,11 @@ export default function MyPage() {
 
   const handleLinkSocialAccount = (provider: SocialProvider) => {
     // OAuth 완료 후 마이페이지로 돌아오기 위해 redirect 경로 저장
-    sessionStorage.setItem('auth_redirect', '/mypage');
+    try {
+      sessionStorage.setItem('auth_redirect', '/mypage');
+    } catch {
+      // 스토리지 접근 실패 시에도 OAuth 진행 (redirect 경로만 누락)
+    }
     // OAuth 인증 시작
     window.location.href = PROVIDER_INFO[provider].linkUrl;
   };
