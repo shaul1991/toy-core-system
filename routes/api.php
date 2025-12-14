@@ -67,7 +67,7 @@ Route::prefix('auth')->group(function () {
             ->middleware('throttle:60,1');
 
         // 소셜 계정 연동
-        Route::post('{provider}/link', [AuthController::class, 'link'])
+        Route::get('{provider}/link', [AuthController::class, 'link'])
             ->where('provider', 'github|naver|kakao')
             ->middleware('throttle:5,1');
 
