@@ -19,11 +19,11 @@ function getInitial(email: string): string {
 }
 
 export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
-  const { isLoggedIn, user, isAdmin } = useAuth();
+  const { isLoggedIn, user } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  // 비회원이거나 관리자가 아니면 노출되지 않음
-  if (!isLoggedIn || !user || !isAdmin) {
+  // 비회원은 노출되지 않음
+  if (!isLoggedIn || !user) {
     return null;
   }
 
