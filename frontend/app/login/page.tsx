@@ -1,4 +1,8 @@
+'use client';
+
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -53,6 +57,20 @@ const socialProviders: SocialProvider[] = [
 ];
 
 export default function LoginPage() {
+  const searchParams = useSearchParams();
+
+  // redirect 파라미터가 있으면 sessionStorage에 저장
+  // OAuth 콜백 후 원래 페이지로 돌아가기 위해 사용
+  useEffect(() => {
+    const redirect = searchParams.get('redirect');
+    if (redirect) {
+      // 외부 URL 방지
+      if (redirect.startsWith('/') && !redirect.startsWith('//')) {
+        sessionStorage.setItem('auth_redirect', redirect);
+      }
+    }
+  }, [searchParams]);
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">

@@ -61,8 +61,22 @@ export default function AuthCallbackPage() {
           // 로그인 성공
           setStatus('success');
           setMessage('로그인 성공! 잠시 후 이동합니다...');
+
+          // redirect 경로 결정: URL 파라미터 → sessionStorage → 기본값
+          const urlRedirect = searchParams.get('redirect');
+          const storedRedirect = typeof window !== 'undefined' ? sessionStorage.getItem('auth_redirect') : null;
+          const redirectPath = urlRedirect || storedRedirect || '/';
+
+          // sessionStorage 정리
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('auth_redirect');
+          }
+
+          // 외부 URL 리다이렉트 방지 (상대 경로만 허용)
+          const safeRedirect = redirectPath.startsWith('/') && !redirectPath.startsWith('//') ? redirectPath : '/';
+
           timeoutRef.current = setTimeout(() => {
-            router.push('/');
+            router.push(safeRedirect);
           }, 1500);
         } else {
           // 인증 실패
