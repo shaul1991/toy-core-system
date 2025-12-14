@@ -9,6 +9,7 @@ use App\Domain\Auth\Exceptions\SocialAuthException;
 use App\Domain\Auth\Exceptions\TokenException;
 use App\Domain\Auth\Services\AuthEventService;
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use App\Shared\Exceptions\BadRequestException;
 use App\Shared\Exceptions\ConflictException;
 use App\Shared\Exceptions\ServiceUnavailableException;
@@ -127,7 +128,18 @@ final class AuthController extends Controller
                 ->withCookie($this->makeAuthCookie($request, 'refresh_token', $tokenDto->refreshToken, 60 * 24 * 7, true))
                 ->withCookie($this->makeAuthCookie($request, 'token_type', $tokenDto->tokenType, $accessTokenMinutes, false));
         } catch (BadRequestException|ConflictException|ServiceUnavailableException $e) {
-            // 에러 시 프론트엔드 에러 페이지로 리다이렉트
+            if ($isLinkMode) {
+                // 연동 모드에서 에러 발생 시 마이페이지로 리다이렉트
+                $errorUrl = $frontendUrl . '/mypage';
+
+                return redirect()->away($errorUrl . '?' . http_build_query([
+                    'social_link' => 'error',
+                    'provider' => $provider,
+                    'message' => $e->getMessage(),
+                ]));
+            }
+
+            // 일반 로그인 에러 시 에러 페이지로 리다이렉트
             $errorUrl = $frontendUrl . '/auth/error';
 
             return redirect()->away($errorUrl . '?' . http_build_query([

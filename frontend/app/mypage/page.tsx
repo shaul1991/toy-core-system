@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/providers/auth-provider';
 import { authApi, User } from '@/lib/api/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -79,6 +79,7 @@ const PROVIDER_INFO: Record<SocialProvider, { name: string; color: string; icon:
 
 export default function MyPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { isLoggedIn } = useAuth();
 
   // API에서 최신 사용자 정보를 가져옴
@@ -139,6 +140,27 @@ export default function MyPage() {
 
     fetchData();
   }, [isLoggedIn, router, fetchData]);
+
+  // 소셜 계정 연동 결과 쿼리 파라미터 처리
+  useEffect(() => {
+    const socialLink = searchParams.get('social_link');
+    const provider = searchParams.get('provider');
+    const message = searchParams.get('message');
+
+    if (socialLink) {
+      if (socialLink === 'success' && provider) {
+        const providerName = isValidProvider(provider)
+          ? PROVIDER_INFO[provider].name
+          : provider;
+        toast.success(`${providerName} 계정이 연동되었습니다.`);
+      } else if (socialLink === 'error') {
+        toast.error(message || '소셜 계정 연동에 실패했습니다.');
+      }
+
+      // 쿼리 파라미터 제거 후 URL 정리
+      router.replace('/mypage');
+    }
+  }, [searchParams, router]);
 
   const handleLogout = async () => {
     const response = await authApi.logout();
