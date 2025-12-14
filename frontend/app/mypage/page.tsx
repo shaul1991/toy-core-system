@@ -385,11 +385,17 @@ export default function MyPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>소셜 계정 연동 해제</AlertDialogTitle>
             <AlertDialogDescription>
-              {selectedProvider && PROVIDER_INFO[selectedProvider].name} 계정 연동을 해제하시겠습니까?
-              {socialAccounts.length === 1 && (
-                <span className="block mt-2 text-destructive font-medium">
-                  마지막 연동 계정은 해제할 수 없습니다.
-                </span>
+              {selectedProvider ? (
+                <>
+                  {PROVIDER_INFO[selectedProvider].name} 계정 연동을 해제하시겠습니까?
+                  {socialAccounts.length === 1 && (
+                    <span className="block mt-2 text-destructive font-medium">
+                      마지막 연동 계정은 해제할 수 없습니다.
+                    </span>
+                  )}
+                </>
+              ) : (
+                '계정 연동을 해제하시겠습니까?'
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
