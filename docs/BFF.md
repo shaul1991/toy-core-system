@@ -234,6 +234,174 @@ Set-Cookie: token_type=; expires=Thu, 01 Jan 1970; Path=/
 
 > **Note**: 서버가 쿠키 만료 헤더를 전송하여 브라우저에서 쿠키가 삭제됩니다.
 
+### POST /api/auth/logout-all
+
+모든 디바이스에서 로그아웃합니다.
+
+**Request:**
+- 인증 쿠키 자동 전송 (credentials: 'include')
+- 별도 Body 불필요
+
+**Response (200):**
+```json
+{
+    "success": true,
+    "data": null,
+    "message": "모든 세션에서 로그아웃되었습니다."
+}
+```
+
+**Response Headers:**
+```http
+Set-Cookie: access_token=; expires=Thu, 01 Jan 1970; Path=/
+Set-Cookie: refresh_token=; expires=Thu, 01 Jan 1970; Path=/
+Set-Cookie: token_type=; expires=Thu, 01 Jan 1970; Path=/
+```
+
+> **Note**: 모든 디바이스의 토큰이 Redis에서 무효화됩니다.
+
+### POST /api/auth/validate
+
+토큰 유효성 검증 (미들웨어 없이 직접 검증)
+
+**Headers:**
+```http
+Authorization: Bearer {access_token}
+```
+
+또는 `access_token` 쿠키 사용
+
+**Response (200) - 유효한 토큰:**
+```json
+{
+    "success": true,
+    "data": {
+        "valid": true,
+        "user": {
+            "id": 1,
+            "name": "홍길동",
+            "email": "hong@example.com",
+            "avatar": "https://..."
+        }
+    }
+}
+```
+
+**Response (200) - 유효하지 않은 토큰:**
+```json
+{
+    "success": true,
+    "data": {
+        "valid": false,
+        "error": "Token expired"
+    }
+}
+```
+
+### GET /api/auth/social-accounts
+
+연동된 소셜 계정 목록 조회
+
+**Headers:**
+```http
+Authorization: Bearer {access_token}
+```
+
+**Response (200):**
+```json
+{
+    "success": true,
+    "data": [
+        {
+            "provider": "github",
+            "provider_user_id": "12345",
+            "email": "hong@example.com",
+            "name": "홍길동",
+            "linked_at": "2024-01-01T00:00:00.000Z"
+        },
+        {
+            "provider": "naver",
+            "provider_user_id": "67890",
+            "email": "hong@naver.com",
+            "name": "홍길동",
+            "linked_at": "2024-01-02T00:00:00.000Z"
+        }
+    ]
+}
+```
+
+### POST /api/auth/{provider}/link
+
+새로운 소셜 계정 연동 시작
+
+**Provider:** `github` | `naver` | `kakao`
+
+**Headers:**
+```http
+Authorization: Bearer {access_token}
+```
+
+**Response:** OAuth Provider로 리다이렉트 (302)
+
+**흐름:**
+1. 세션에 `social_link_mode` 플래그 설정
+2. OAuth Provider로 리다이렉트
+3. OAuth 인증 완료 후 콜백에서 계정 연동 처리
+4. 성공 시 프론트엔드 `/auth/callback`으로 리다이렉트
+
+**Error Response (409) - 이미 연동된 계정:**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "CONFLICT",
+        "message": "이미 다른 계정에 연동된 소셜 계정입니다."
+    }
+}
+```
+
+### DELETE /api/auth/{provider}/unlink
+
+소셜 계정 연동 해제
+
+**Provider:** `github` | `naver` | `kakao`
+
+**Headers:**
+```http
+Authorization: Bearer {access_token}
+```
+
+**Response (200):**
+```json
+{
+    "success": true,
+    "data": null,
+    "message": "소셜 계정 연동이 해제되었습니다."
+}
+```
+
+**Error Response (400) - 마지막 로그인 수단:**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "BAD_REQUEST",
+        "message": "마지막 로그인 수단은 해제할 수 없습니다."
+    }
+}
+```
+
+**Error Response (404) - 연동되지 않은 계정:**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "NOT_FOUND",
+        "message": "연동된 소셜 계정을 찾을 수 없습니다."
+    }
+}
+```
+
 ## 미들웨어
 
 ### JwtAuthenticate

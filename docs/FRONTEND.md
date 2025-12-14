@@ -62,6 +62,89 @@ Next.js 기반의 프론트엔드 애플리케이션입니다. Metronic v9.3.8 �
 | `clsx` / `tailwind-merge` | 클래스명 유틸리티 |
 | `class-variance-authority` | 컴포넌트 변형 관리 |
 
+## 페이지 구성
+
+### 현재 구현된 페이지
+
+| URL | 파일 경로 | 설명 | 접근 권한 |
+|-----|----------|------|-----------|
+| `/` | `app/page.tsx` | 홈/대시보드 페이지 | 모든 사용자 |
+| `/login` | `app/login/page.tsx` | 소셜 로그인 페이지 (GitHub, Naver, Kakao) | 게스트 전용 |
+| `/auth/callback` | `app/auth/callback/page.tsx` | OAuth 콜백 처리 페이지 | 모든 사용자 |
+| `/auth/error` | `app/auth/error/page.tsx` | 인증 에러 표시 페이지 | 모든 사용자 |
+
+### 접근 권한 유형
+
+| 유형 | 설명 | 비인증 사용자 | 인증 사용자 |
+|------|------|--------------|-------------|
+| **모든 사용자** | 누구나 접근 가능 | ✅ 허용 | ✅ 허용 |
+| **게스트 전용** | 비로그인 사용자만 접근 | ✅ 허용 | ❌ `/`로 리다이렉트 |
+| **인증 필요** | 로그인 사용자만 접근 | ❌ `/login`으로 리다이렉트 | ✅ 허용 |
+
+### 예정된 보호 경로
+
+미들웨어에 정의되어 있으나 아직 페이지가 구현되지 않은 경로:
+
+| URL 패턴 | 설명 | 접근 권한 |
+|----------|------|-----------|
+| `/mypage/*` | 마이페이지 및 하위 경로 | 인증 필요 |
+| `/settings/*` | 설정 페이지 및 하위 경로 | 인증 필요 |
+| `/dashboard/*` | 대시보드 및 하위 경로 | 인증 필요 |
+
+---
+
+### 페이지별 상세 설명
+
+#### 홈 페이지 (`/`)
+
+- **파일**: `app/page.tsx`
+- **타입**: 클라이언트 컴포넌트 (`'use client'`)
+- **용도**: 메인 대시보드 진입점
+- **주요 컴포넌트**: `Skeleton`, `Toolbar`, `ToolbarHeading`
+
+#### 로그인 페이지 (`/login`)
+
+- **파일**: `app/login/page.tsx`
+- **타입**: 클라이언트 컴포넌트 (`'use client'`)
+- **용도**: 소셜 로그인 UI 제공
+- **지원 Provider**:
+  | Provider | 테마 색상 | API 엔드포인트 |
+  |----------|----------|----------------|
+  | GitHub | `#24292e` (dark) | `/api/auth/github/redirect` |
+  | Naver | `#03C75A` (green) | `/api/auth/naver/redirect` |
+  | Kakao | `#FEE500` (yellow) | `/api/auth/kakao/redirect` |
+- **특징**:
+  - `redirect` 파라미터를 `sessionStorage`에 저장하여 로그인 후 원래 페이지로 복귀
+  - 이용약관 및 개인정보처리방침 링크 제공
+  - 로그인한 사용자는 자동으로 `/`로 리다이렉트
+
+#### OAuth 콜백 페이지 (`/auth/callback`)
+
+- **파일**: `app/auth/callback/page.tsx`
+- **타입**: 클라이언트 컴포넌트 (`'use client'`)
+- **용도**: OAuth 인증 완료 후 처리
+- **흐름**:
+  1. URL 파라미터에서 `error` 확인
+  2. `/api/auth/me` API 호출로 인증 상태 확인
+  3. 성공 시: 1.5초 후 저장된 redirect 경로 또는 `/`로 이동
+  4. 실패 시: 3초 후 `/login`으로 이동
+- **상태 표시**: 로딩 → 성공/실패 애니메이션
+
+#### 인증 에러 페이지 (`/auth/error`)
+
+- **파일**: `app/auth/error/page.tsx`
+- **타입**: 클라이언트 컴포넌트 (`'use client'`)
+- **용도**: OAuth 인증 실패 메시지 표시
+- **지원 에러 코드**:
+  | 코드 | 설명 |
+  |------|------|
+  | `SOCIAL_AUTH_FAILED` | 소셜 인증 실패 |
+  | `SOCIAL_ALREADY_LINKED` | 이미 다른 계정에 연동됨 |
+  | `SOCIAL_EMAIL_REQUIRED` | 이메일 권한 필요 |
+  | `UNKNOWN_ERROR` | 알 수 없는 오류 |
+
+---
+
 ## 디렉토리 구조
 
 ```
