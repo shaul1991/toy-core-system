@@ -1,6 +1,5 @@
 import { ReactNode, Suspense } from 'react';
 import { Inter } from 'next/font/google';
-import { cookies } from 'next/headers';
 import { cn } from '@/lib/utils';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Toaster } from '@/components/ui/sonner';
@@ -9,6 +8,7 @@ import { ThemeProvider } from 'next-themes';
 import { Layout7 } from '@/components/layouts/layout-7';
 import { LayoutProvider } from '@/components/layouts/layout-1/components/context';
 import { AuthProvider } from '@/components/providers/auth-provider';
+import { getServerUser } from '@/lib/api/server';
 
 import '@/styles/globals.css';
 const inter = Inter({ subsets: ['latin'] });
@@ -25,8 +25,8 @@ export default async function RootLayout({
 }: {
   children: ReactNode;
 }) {
-  const cookieStore = await cookies();
-  const isLoggedIn = cookieStore.has('token_type');
+  const user = await getServerUser();
+  const isLoggedIn = user !== null;
 
   return (
     <html className="h-full" suppressHydrationWarning>
@@ -44,7 +44,7 @@ export default async function RootLayout({
           disableTransitionOnChange
           enableColorScheme
         >
-          <AuthProvider initialIsLoggedIn={isLoggedIn}>
+          <AuthProvider initialIsLoggedIn={isLoggedIn} initialUser={user}>
             <TooltipProvider delayDuration={0}>
               <LayoutProvider>
                 <Suspense>

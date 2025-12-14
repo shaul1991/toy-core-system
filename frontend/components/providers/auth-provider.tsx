@@ -3,8 +3,10 @@
 import { createContext, useContext, ReactNode } from 'react';
 
 export interface User {
+  id?: number;
   email: string;
   name?: string;
+  avatar?: string | null;
   isAdmin?: boolean;
 }
 

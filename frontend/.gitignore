@@ -14,3 +14,6 @@ dist-ssr
 .next
 .env.dev
 .env.production
+
+# TypeScript
+*.tsbuildinfo
