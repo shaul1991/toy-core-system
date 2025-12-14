@@ -72,9 +72,19 @@ final class AuthController extends Controller
         $frontendUrl = config('app.frontend_url', 'http://localhost:3002');
 
         try {
-            // 연동 모드인지 확인
-            $isLinkMode = session('social_link_mode', false);
-            $linkUserId = session('social_link_user_id');
+            // OAuth state 파라미터에서 연동 모드 확인
+            // 형식: link:{user_id}:{random}
+            $state = $request->query('state');
+            $isLinkMode = false;
+            $linkUserId = null;
+
+            if ($state && str_starts_with($state, 'link:')) {
+                $parts = explode(':', $state);
+                if (count($parts) === 3 && is_numeric($parts[1])) {
+                    $isLinkMode = true;
+                    $linkUserId = (int) $parts[1];
+                }
+            }
 
             if ($isLinkMode && $linkUserId) {
                 // 연동 모드: 기존 사용자에게 소셜 계정 연동
@@ -117,9 +127,6 @@ final class AuthController extends Controller
                 ->withCookie($this->makeAuthCookie($request, 'refresh_token', $tokenDto->refreshToken, 60 * 24 * 7, true))
                 ->withCookie($this->makeAuthCookie($request, 'token_type', $tokenDto->tokenType, $accessTokenMinutes, false));
         } catch (BadRequestException|ConflictException|ServiceUnavailableException $e) {
-            // 세션 정리
-            session()->forget(['social_link_mode', 'social_link_user_id']);
-
             // 에러 시 프론트엔드 에러 페이지로 리다이렉트
             $errorUrl = $frontendUrl . '/auth/error';
 
@@ -329,10 +336,11 @@ final class AuthController extends Controller
             return $this->forbiddenResponse('소셜 계정 연동을 위해서는 로그인이 필요합니다.');
         }
 
-        // 연동 모드로 세션에 저장
-        session(['social_link_mode' => true, 'social_link_user_id' => $user->id]);
+        // OAuth state 파라미터에 사용자 ID 인코딩
+        // 형식: link:{user_id}:{random}
+        $state = 'link:' . $user->id . ':' . bin2hex(random_bytes(16));
 
-        $redirectUrl = $this->coreAuthService->getRedirectUrl($provider);
+        $redirectUrl = $this->coreAuthService->getRedirectUrlWithState($provider, $state);
 
         return redirect()->away($redirectUrl);
     }

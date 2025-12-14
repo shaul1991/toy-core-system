@@ -39,6 +39,20 @@ final class SocialAuthService
     }
 
     /**
+     * 소셜 계정 연동용 리다이렉트 URL 생성 (state 파라미터 포함)
+     */
+    public function getRedirectUrlWithState(string $provider, string $state): string
+    {
+        $this->validateProvider($provider);
+
+        return Socialite::driver($provider)
+            ->stateless()
+            ->with(['state' => $state])
+            ->redirect()
+            ->getTargetUrl();
+    }
+
+    /**
      * 소셜 로그인 콜백 처리 (비로그인 상태)
      */
     public function handleCallback(string $provider): TokenDTO

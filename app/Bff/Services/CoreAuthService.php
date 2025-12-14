@@ -33,6 +33,14 @@ final class CoreAuthService
     }
 
     /**
+     * 소셜 계정 연동용 리다이렉트 URL 조회 (state 파라미터 포함)
+     */
+    public function getRedirectUrlWithState(string $provider, string $state): string
+    {
+        return $this->socialAuthService->getRedirectUrlWithState($provider, $state);
+    }
+
+    /**
      * 소셜 로그인 콜백 처리 (로그인/회원가입)
      */
     public function handleSocialCallback(string $provider): TokenDTO
