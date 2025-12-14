@@ -72,6 +72,32 @@ final class AuthController extends Controller
         $frontendUrl = config('app.frontend_url', 'http://localhost:3002');
 
         try {
+            // 연동 모드인지 확인
+            $isLinkMode = session('social_link_mode', false);
+            $linkUserId = session('social_link_user_id');
+
+            if ($isLinkMode && $linkUserId) {
+                // 연동 모드: 기존 사용자에게 소셜 계정 연동
+                $user = User::findOrFail($linkUserId);
+                $this->coreAuthService->linkSocialAccount($user, $provider);
+
+                // 소셜 계정 연동 이벤트 기록
+                $this->authEventService->logSocialLink(
+                    userId: $user->id,
+                    provider: $provider,
+                    request: $request,
+                );
+
+                // 세션 정리
+                session()->forget(['social_link_mode', 'social_link_user_id']);
+
+                // 프론트엔드 연동 성공 페이지로 리다이렉트
+                $successUrl = $frontendUrl . '/mypage?social_link=success&provider=' . $provider;
+
+                return redirect()->away($successUrl);
+            }
+
+            // 일반 로그인 모드
             $tokenDto = $this->coreAuthService->handleSocialCallback($provider);
 
             // 로그인 이벤트 기록
@@ -91,6 +117,9 @@ final class AuthController extends Controller
                 ->withCookie($this->makeAuthCookie($request, 'refresh_token', $tokenDto->refreshToken, 60 * 24 * 7, true))
                 ->withCookie($this->makeAuthCookie($request, 'token_type', $tokenDto->tokenType, $accessTokenMinutes, false));
         } catch (BadRequestException|ConflictException|ServiceUnavailableException $e) {
+            // 세션 정리
+            session()->forget(['social_link_mode', 'social_link_user_id']);
+
             // 에러 시 프론트엔드 에러 페이지로 리다이렉트
             $errorUrl = $frontendUrl . '/auth/error';
 
