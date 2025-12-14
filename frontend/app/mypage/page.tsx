@@ -159,14 +159,8 @@ export default function MyPage() {
 
       if (response.success) {
         toast.success(`${PROVIDER_INFO[selectedProvider].name} 연동이 해제되었습니다.`);
-        // 소셜 계정 목록 새로고침
-        const socialResponse = await authApi.socialAccounts();
-        if (socialResponse.success && socialResponse.data) {
-          const validAccounts = socialResponse.data.filter((account): account is SocialAccount =>
-            isValidProvider(account.provider)
-          );
-          setSocialAccounts(validAccounts);
-        }
+        // 데이터 새로고침
+        await fetchData();
       } else {
         toast.error(response.error?.message || '연동 해제에 실패했습니다.');
       }
@@ -272,7 +266,7 @@ export default function MyPage() {
               <Avatar className="size-20">
                 <AvatarImage src={user.avatar || undefined} alt={user.name} />
                 <AvatarFallback className="text-xl">
-                  {user.name ? getInitials(user.name) : user.email[0].toUpperCase()}
+                  {user.name ? getInitials(user.name) : (user.email[0] || '?').toUpperCase()}
                 </AvatarFallback>
               </Avatar>
               <div className="space-y-1 flex-1">
