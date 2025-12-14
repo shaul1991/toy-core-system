@@ -130,7 +130,6 @@ export default function MyPage() {
     if (response.success) {
       toast.success('로그아웃되었습니다.');
       router.push('/');
-      router.refresh();
     } else {
       toast.error('로그아웃에 실패했습니다.');
     }
@@ -141,7 +140,6 @@ export default function MyPage() {
     if (response.success) {
       toast.success('모든 기기에서 로그아웃되었습니다.');
       router.push('/');
-      router.refresh();
     } else {
       toast.error('로그아웃에 실패했습니다.');
     }
