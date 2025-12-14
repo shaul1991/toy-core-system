@@ -565,6 +565,66 @@ export default function AuthCallbackPage() {
 | 응답 포맷 | 내부 DTO | 클라이언트 친화적 JSON |
 | OAuth 흐름 | URL 반환 | 리다이렉트 처리 |
 
+## Swagger UI (API 문서)
+
+BFF API는 OpenAPI 3.0 스펙으로 문서화되어 있으며, Swagger UI를 통해 인터랙티브하게 테스트할 수 있습니다.
+
+### 접근 방법
+
+| 환경 | URL | 설명 |
+|------|-----|------|
+| 로컬 개발 | `http://localhost:8000/swagger` | 로컬 서버 |
+| 개발 서버 | `https://dev-core.shaul.link/swagger` | 개발 환경 |
+
+### 환경 변수 설정
+
+```env
+# .env 파일
+SWAGGER_UI_ENABLED=true   # Swagger UI 활성화 (기본값: false)
+```
+
+> **Note**: 프로덕션 환경에서는 보안을 위해 `SWAGGER_UI_ENABLED=false`로 설정하세요.
+
+### OpenAPI 스펙 파일
+
+```
+resources/swagger/openapi.json
+```
+
+**포함된 API 그룹:**
+- **Auth** - JWT 인증 및 소셜 로그인 (BFF)
+- **Timer** - 타이머 관리 (Domain)
+- **File** - 파일 저장 및 관리 (Domain)
+- **Notification** - 다채널 알림 발송 (Domain)
+- **User Activity** - 사용자 활동 로그 (Domain)
+
+### Swagger UI 설정 파일
+
+```
+config/swagger-ui.php
+```
+
+**주요 설정:**
+- `enabled`: Swagger UI 활성화 여부
+- `files[].path`: Swagger UI 접근 경로 (`/swagger`)
+- `files[].versions`: OpenAPI 스펙 버전 관리
+- `modify_file`: 서버 URL 자동 수정 여부 (기본: false)
+
+### API 테스트 방법
+
+1. Swagger UI 페이지 접속 (`/swagger`)
+2. 테스트할 API 엔드포인트 선택
+3. "Try it out" 버튼 클릭
+4. 필요한 파라미터 입력
+5. "Execute" 버튼으로 API 호출
+
+**인증이 필요한 API 테스트:**
+1. 먼저 `/api/auth/{provider}/redirect`로 소셜 로그인
+2. 로그인 후 브라우저 쿠키에 토큰이 저장됨
+3. 이후 인증 필요 API 호출 시 쿠키가 자동 전송됨
+
+---
+
 ## 테스트
 
 ### 테스트 파일 위치
