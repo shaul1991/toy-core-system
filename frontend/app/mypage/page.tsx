@@ -21,14 +21,24 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { AlertCircle, RefreshCw } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+
+// 타입 안정성을 위한 Provider 타입 정의
+type SocialProvider = 'github' | 'naver' | 'kakao';
 
 interface SocialAccount {
-  provider: string;
+  provider: SocialProvider;
   provider_email: string;
   created_at: string;
 }
 
-const PROVIDER_INFO: Record<string, { name: string; color: string; icon: React.ReactNode }> = {
+// Provider 타입 가드
+function isValidProvider(provider: string): provider is SocialProvider {
+  return ['github', 'naver', 'kakao'].includes(provider);
+}
+
+const PROVIDER_INFO: Record<SocialProvider, { name: string; color: string; icon: React.ReactNode }> = {
   github: {
     name: 'GitHub',
     color: 'bg-[#24292e]',
@@ -61,39 +71,56 @@ const PROVIDER_INFO: Record<string, { name: string; color: string; icon: React.R
 export default function MyPage() {
   const router = useRouter();
   const { user: contextUser, isLoggedIn } = useAuth();
+
+  // 초기 캐시 데이터(contextUser)를 보여주고, API로 최신 데이터를 가져옴
+  // contextUser는 SSR 시점의 스냅샷이므로 클라이언트에서 최신화 필요
   const [user, setUser] = useState<User | null>(contextUser);
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [unlinkDialogOpen, setUnlinkDialogOpen] = useState(false);
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<SocialProvider | null>(null);
   const [isUnlinking, setIsUnlinking] = useState(false);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // 사용자 정보 가져오기
+      const userResponse = await authApi.me();
+      if (userResponse.success && userResponse.data) {
+        setUser(userResponse.data);
+      } else {
+        throw new Error(userResponse.error?.message || '사용자 정보를 불러올 수 없습니다.');
+      }
+
+      // 연동된 소셜 계정 가져오기
+      const socialResponse = await authApi.socialAccounts();
+      if (socialResponse.success && socialResponse.data) {
+        // 타입 검증: API에서 유효하지 않은 provider가 올 수 있으므로 필터링
+        const validAccounts = socialResponse.data.filter((account): account is SocialAccount =>
+          isValidProvider(account.provider)
+        );
+        setSocialAccounts(validAccounts);
+      } else {
+        throw new Error(socialResponse.error?.message || '소셜 계정 정보를 불러올 수 없습니다.');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '데이터를 불러오는데 실패했습니다.';
+      console.error('Failed to fetch user data:', err);
+      setError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!isLoggedIn) {
       router.push('/login?redirect=/mypage');
       return;
     }
-
-    const fetchData = async () => {
-      try {
-        // 사용자 정보 가져오기
-        const userResponse = await authApi.me();
-        if (userResponse.success && userResponse.data) {
-          setUser(userResponse.data);
-        }
-
-        // 연동된 소셜 계정 가져오기
-        const socialResponse = await authApi.socialAccounts();
-        if (socialResponse.success && socialResponse.data) {
-          setSocialAccounts(socialResponse.data);
-        }
-      } catch (error) {
-        console.error('Failed to fetch user data:', error);
-        toast.error('데이터를 불러오는데 실패했습니다.');
-      } finally {
-        setLoading(false);
-      }
-    };
 
     fetchData();
   }, [isLoggedIn, router]);
@@ -120,7 +147,7 @@ export default function MyPage() {
     }
   };
 
-  const openUnlinkDialog = (provider: string) => {
+  const openUnlinkDialog = (provider: SocialProvider) => {
     setSelectedProvider(provider);
     setUnlinkDialogOpen(true);
   };
@@ -130,16 +157,17 @@ export default function MyPage() {
 
     setIsUnlinking(true);
     try {
-      const response = await authApi.unlinkSocialAccount(
-        selectedProvider as 'github' | 'naver' | 'kakao'
-      );
+      const response = await authApi.unlinkSocialAccount(selectedProvider);
 
       if (response.success) {
-        toast.success(`${PROVIDER_INFO[selectedProvider]?.name || selectedProvider} 연동이 해제되었습니다.`);
+        toast.success(`${PROVIDER_INFO[selectedProvider].name} 연동이 해제되었습니다.`);
         // 소셜 계정 목록 새로고침
         const socialResponse = await authApi.socialAccounts();
         if (socialResponse.success && socialResponse.data) {
-          setSocialAccounts(socialResponse.data);
+          const validAccounts = socialResponse.data.filter((account): account is SocialAccount =>
+            isValidProvider(account.provider)
+          );
+          setSocialAccounts(validAccounts);
         }
       } else {
         toast.error(response.error?.message || '연동 해제에 실패했습니다.');
@@ -190,6 +218,34 @@ export default function MyPage() {
               </div>
             </CardContent>
           </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // 에러 상태 UI
+  if (error) {
+    return (
+      <div className="container max-w-4xl mx-auto py-8 px-4">
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">마이페이지</h1>
+            <p className="text-muted-foreground mt-2">계정 정보를 확인하고 관리하세요.</p>
+          </div>
+
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertTitle>오류 발생</AlertTitle>
+            <AlertDescription className="mt-2">
+              {error}
+              <div className="mt-4">
+                <Button onClick={fetchData} variant="outline" size="sm">
+                  <RefreshCw className="size-4 mr-2" />
+                  다시 시도
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
         </div>
       </div>
     );
@@ -260,15 +316,11 @@ export default function MyPage() {
                       className="flex items-center justify-between p-4 border rounded-lg"
                     >
                       <div className="flex items-center space-x-3">
-                        <div className={`p-2 rounded-lg ${providerInfo?.color || 'bg-gray-500'} text-white`}>
-                          {providerInfo?.icon || (
-                            <div className="size-4 rounded-full bg-white/20" />
-                          )}
+                        <div className={`p-2 rounded-lg ${providerInfo.color} text-white`}>
+                          {providerInfo.icon}
                         </div>
                         <div>
-                          <p className="font-medium">
-                            {providerInfo?.name || account.provider}
-                          </p>
+                          <p className="font-medium">{providerInfo.name}</p>
                           <p className="text-sm text-muted-foreground">
                             {account.provider_email}
                           </p>
@@ -335,7 +387,7 @@ export default function MyPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>소셜 계정 연동 해제</AlertDialogTitle>
             <AlertDialogDescription>
-              {selectedProvider && PROVIDER_INFO[selectedProvider]?.name} 계정 연동을 해제하시겠습니까?
+              {selectedProvider && PROVIDER_INFO[selectedProvider].name} 계정 연동을 해제하시겠습니까?
               {socialAccounts.length === 1 && (
                 <span className="block mt-2 text-destructive font-medium">
                   마지막 연동 계정은 해제할 수 없습니다.
