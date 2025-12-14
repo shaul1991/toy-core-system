@@ -1,4 +1,4 @@
-import { Heart, Search, ShoppingCart, UserCircle } from 'lucide-react';
+import { Heart, Search, ShoppingCart } from 'lucide-react';
 import { usePathname } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -31,19 +31,7 @@ export function StoreClientTopbar() {
             </div>
           )}
 
-        <UserDropdownMenu
-          trigger={
-            <Button
-              variant="ghost"
-              size="lg"
-              mode="icon"
-              shape="circle"
-              className="hover:text-primary"
-            >
-              <UserCircle className="size-5!" />
-            </Button>
-          }
-        />
+        <UserDropdownMenu />
 
         <Button
           variant="ghost"

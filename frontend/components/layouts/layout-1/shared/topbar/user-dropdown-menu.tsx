@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState } from 'react';
+import { useState } from 'react';
 import { LogOut, User } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/auth-provider';
@@ -18,7 +18,7 @@ function getInitial(email: string): string {
   return email.charAt(0).toUpperCase();
 }
 
-export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
+export function UserDropdownMenu() {
   const { isLoggedIn, user } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
@@ -42,7 +42,14 @@ export function UserDropdownMenu({ trigger }: { trigger: ReactNode }) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground font-semibold text-sm cursor-pointer shrink-0"
+        >
+          {initial}
+        </button>
+      </DropdownMenuTrigger>
       <DropdownMenuContent className="w-64" side="bottom" align="end">
         {/* Header - 사용자 정보 */}
         <div className="flex items-center gap-3 p-3">
