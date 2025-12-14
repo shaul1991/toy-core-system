@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/auth-provider';
 import { authApi, User } from '@/lib/api/client';
@@ -82,7 +82,7 @@ export default function MyPage() {
   const [selectedProvider, setSelectedProvider] = useState<SocialProvider | null>(null);
   const [isUnlinking, setIsUnlinking] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -114,7 +114,7 @@ export default function MyPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []); // authApi는 안정적인 참조이므로 의존성에 포함 불필요
 
   useEffect(() => {
     if (!isLoggedIn) {
@@ -123,7 +123,7 @@ export default function MyPage() {
     }
 
     fetchData();
-  }, [isLoggedIn, router]);
+  }, [isLoggedIn, router, fetchData]);
 
   const handleLogout = async () => {
     const response = await authApi.logout();
