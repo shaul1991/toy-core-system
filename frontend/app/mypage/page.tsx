@@ -393,7 +393,7 @@ export default function MyPage() {
                         </div>
                       </div>
                       <Button
-                        variant="default"
+                        variant="primary"
                         size="sm"
                         onClick={() => handleLinkSocialAccount(provider)}
                       >
