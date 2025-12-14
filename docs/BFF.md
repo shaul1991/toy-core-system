@@ -234,6 +234,174 @@ Set-Cookie: token_type=; expires=Thu, 01 Jan 1970; Path=/
 
 > **Note**: 서버가 쿠키 만료 헤더를 전송하여 브라우저에서 쿠키가 삭제됩니다.
 
+### POST /api/auth/logout-all
+
+모든 디바이스에서 로그아웃합니다.
+
+**Request:**
+- 인증 쿠키 자동 전송 (credentials: 'include')
+- 별도 Body 불필요
+
+**Response (200):**
+```json
+{
+    "success": true,
+    "data": null,
+    "message": "모든 세션에서 로그아웃되었습니다."
+}
+```
+
+**Response Headers:**
+```http
+Set-Cookie: access_token=; expires=Thu, 01 Jan 1970; Path=/
+Set-Cookie: refresh_token=; expires=Thu, 01 Jan 1970; Path=/
+Set-Cookie: token_type=; expires=Thu, 01 Jan 1970; Path=/
+```
+
+> **Note**: 모든 디바이스의 토큰이 Redis에서 무효화됩니다.
+
+### POST /api/auth/validate
+
+토큰 유효성 검증 (미들웨어 없이 직접 검증)
+
+**Headers:**
+```http
+Authorization: Bearer {access_token}
+```
+
+또는 `access_token` 쿠키 사용
+
+**Response (200) - 유효한 토큰:**
+```json
+{
+    "success": true,
+    "data": {
+        "valid": true,
+        "user": {
+            "id": 1,
+            "name": "홍길동",
+            "email": "hong@example.com",
+            "avatar": "https://..."
+        }
+    }
+}
+```
+
+**Response (200) - 유효하지 않은 토큰:**
+```json
+{
+    "success": true,
+    "data": {
+        "valid": false,
+        "error": "Token expired"
+    }
+}
+```
+
+### GET /api/auth/social-accounts
+
+연동된 소셜 계정 목록 조회
+
+**Headers:**
+```http
+Authorization: Bearer {access_token}
+```
+
+**Response (200):**
+```json
+{
+    "success": true,
+    "data": [
+        {
+            "provider": "github",
+            "provider_user_id": "12345",
+            "email": "hong@example.com",
+            "name": "홍길동",
+            "linked_at": "2024-01-01T00:00:00.000Z"
+        },
+        {
+            "provider": "naver",
+            "provider_user_id": "67890",
+            "email": "hong@naver.com",
+            "name": "홍길동",
+            "linked_at": "2024-01-02T00:00:00.000Z"
+        }
+    ]
+}
+```
+
+### POST /api/auth/{provider}/link
+
+새로운 소셜 계정 연동 시작
+
+**Provider:** `github` | `naver` | `kakao`
+
+**Headers:**
+```http
+Authorization: Bearer {access_token}
+```
+
+**Response:** OAuth Provider로 리다이렉트 (302)
+
+**흐름:**
+1. 세션에 `social_link_mode` 플래그 설정
+2. OAuth Provider로 리다이렉트
+3. OAuth 인증 완료 후 콜백에서 계정 연동 처리
+4. 성공 시 프론트엔드 `/auth/callback`으로 리다이렉트
+
+**Error Response (409) - 이미 연동된 계정:**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "CONFLICT",
+        "message": "이미 다른 계정에 연동된 소셜 계정입니다."
+    }
+}
+```
+
+### DELETE /api/auth/{provider}/unlink
+
+소셜 계정 연동 해제
+
+**Provider:** `github` | `naver` | `kakao`
+
+**Headers:**
+```http
+Authorization: Bearer {access_token}
+```
+
+**Response (200):**
+```json
+{
+    "success": true,
+    "data": null,
+    "message": "소셜 계정 연동이 해제되었습니다."
+}
+```
+
+**Error Response (400) - 마지막 로그인 수단:**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "BAD_REQUEST",
+        "message": "마지막 로그인 수단은 해제할 수 없습니다."
+    }
+}
+```
+
+**Error Response (404) - 연동되지 않은 계정:**
+```json
+{
+    "success": false,
+    "error": {
+        "code": "NOT_FOUND",
+        "message": "연동된 소셜 계정을 찾을 수 없습니다."
+    }
+}
+```
+
 ## 미들웨어
 
 ### JwtAuthenticate
@@ -396,6 +564,66 @@ export default function AuthCallbackPage() {
 | 토큰 검증 | 하지 않음 | JWT 검증 |
 | 응답 포맷 | 내부 DTO | 클라이언트 친화적 JSON |
 | OAuth 흐름 | URL 반환 | 리다이렉트 처리 |
+
+## Swagger UI (API 문서)
+
+BFF API는 OpenAPI 3.0 스펙으로 문서화되어 있으며, Swagger UI를 통해 인터랙티브하게 테스트할 수 있습니다.
+
+### 접근 방법
+
+| 환경 | URL | 설명 |
+|------|-----|------|
+| 로컬 개발 | `http://localhost:8000/swagger` | 로컬 서버 |
+| 개발 서버 | `https://dev-core.shaul.link/swagger` | 개발 환경 |
+
+### 환경 변수 설정
+
+```env
+# .env 파일
+SWAGGER_UI_ENABLED=true   # Swagger UI 활성화 (기본값: false)
+```
+
+> **Note**: 프로덕션 환경에서는 보안을 위해 `SWAGGER_UI_ENABLED=false`로 설정하세요.
+
+### OpenAPI 스펙 파일
+
+```
+resources/swagger/openapi.json
+```
+
+**포함된 API 그룹:**
+- **Auth** - JWT 인증 및 소셜 로그인 (BFF)
+- **Timer** - 타이머 관리 (Domain)
+- **File** - 파일 저장 및 관리 (Domain)
+- **Notification** - 다채널 알림 발송 (Domain)
+- **User Activity** - 사용자 활동 로그 (Domain)
+
+### Swagger UI 설정 파일
+
+```
+config/swagger-ui.php
+```
+
+**주요 설정:**
+- `enabled`: Swagger UI 활성화 여부
+- `files[].path`: Swagger UI 접근 경로 (`/swagger`)
+- `files[].versions`: OpenAPI 스펙 버전 관리
+- `modify_file`: 서버 URL 자동 수정 여부 (기본: false)
+
+### API 테스트 방법
+
+1. Swagger UI 페이지 접속 (`/swagger`)
+2. 테스트할 API 엔드포인트 선택
+3. "Try it out" 버튼 클릭
+4. 필요한 파라미터 입력
+5. "Execute" 버튼으로 API 호출
+
+**인증이 필요한 API 테스트:**
+1. 먼저 `/api/auth/{provider}/redirect`로 소셜 로그인
+2. 로그인 후 브라우저 쿠키에 토큰이 저장됨
+3. 이후 인증 필요 API 호출 시 쿠키가 자동 전송됨
+
+---
 
 ## 테스트
 

@@ -23,6 +23,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Frontend | Tailwind CSS 4.x (Vite) |
 | Testing | PHPUnit 11.x |
 | Monitoring | Sentry |
+| API Docs | Swagger UI (OpenAPI 3.0) |
+
+## API Documentation (Swagger)
+
+프로젝트의 모든 API는 OpenAPI 3.0 스펙으로 문서화되어 있습니다.
+
+```bash
+# Swagger UI 접속 (로컬)
+http://localhost:8000/swagger
+
+# Swagger UI 활성화 (.env)
+SWAGGER_UI_ENABLED=true
+```
+
+**관련 파일:**
+- `resources/swagger/openapi.json` - OpenAPI 스펙 파일
+- `config/swagger-ui.php` - Swagger UI 설정
 
 ## Commands
 
