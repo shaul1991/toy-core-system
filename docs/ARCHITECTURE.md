@@ -323,6 +323,345 @@ User ← Frontend ← BFF ← Core Service ← Repository ← Success
 
 ---
 
+## Event-Driven Architecture
+
+시스템은 **Event-Driven Architecture(EDA)**를 지향하며, 도메인 이벤트를 통해 느슨한 결합과 확장성을 달성합니다.
+
+### 아키텍처 원칙
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Domain Layer (Core Service)             │
+│                                                       │
+│  ┌──────────┐      발행      ┌──────────────┐       │
+│  │  Service │ ─────────────> │ Domain Event │       │
+│  └──────────┘                └──────┬───────┘       │
+│                                      │               │
+│                                      ▼               │
+│                              ┌──────────────┐       │
+│                              │  Event Bus   │       │
+│                              │  (Laravel)   │       │
+│                              └──────┬───────┘       │
+│                                      │               │
+│                    ┌─────────────────┼─────────────┐│
+│                    ▼                 ▼             ▼││
+│              ┌──────────┐      ┌──────────┐  ┌────────┐
+│              │ Listener │      │ Listener │  │ Queue  │
+│              │ (Sync)   │      │ (Async)  │  │  Job   │
+│              └──────────┘      └──────────┘  └────────┘
+└─────────────────────────────────────────────────────┘
+```
+
+**핵심 원칙:**
+1. **느슨한 결합**: 도메인 서비스는 이벤트만 발행하고, 처리는 리스너가 담당
+2. **단일 책임**: 각 리스너는 하나의 명확한 책임을 가짐
+3. **비동기 처리**: 중요하지 않은 작업은 Queue Job으로 비동기 처리
+4. **확장성**: 새로운 기능 추가 시 기존 코드 수정 없이 리스너 추가
+
+---
+
+### 도메인 이벤트 패턴
+
+#### 이벤트 발행
+
+```php
+// app/Domain/Auth/Services/SocialAuthService.php
+public function handleCallback(string $provider, string $code): TokenDTO
+{
+    $socialUser = $this->getSocialUser($provider, $code);
+    $user = $this->findOrCreateUser($socialUser);
+
+    // 도메인 이벤트 발행
+    if ($user->wasRecentlyCreated) {
+        event(new UserCreated($user));
+    }
+
+    event(new UserLoggedIn($user, $provider));
+
+    return $this->generateTokenPair($user);
+}
+```
+
+#### 이벤트 리스너 (동기)
+
+```php
+// app/Domain/Auth/Listeners/CreateAuthEventLog.php
+class CreateAuthEventLog
+{
+    public function handle(UserLoggedIn $event): void
+    {
+        $this->authEventService->log([
+            'user_id' => $event->user->id,
+            'event_type' => 'login',
+            'provider' => $event->provider,
+            'ip_address' => request()->ip(),
+        ]);
+    }
+}
+```
+
+#### 이벤트 리스너 (비동기)
+
+```php
+// app/Domain/Auth/Listeners/SendWelcomeEmail.php
+class SendWelcomeEmail implements ShouldQueue
+{
+    use Queueable;
+
+    public function handle(UserCreated $event): void
+    {
+        Mail::to($event->user->email)
+            ->send(new WelcomeEmail($event->user));
+    }
+}
+```
+
+---
+
+### 이벤트 흐름
+
+#### 사용자 생성 이벤트
+
+```mermaid
+sequenceDiagram
+    participant S as Service
+    participant E as Event Bus
+    participant L1 as CreateAuthLog (Sync)
+    participant L2 as SendWelcomeEmail (Queue)
+    participant L3 as UpdateUserCache (Sync)
+    participant Q as Queue Worker
+
+    S->>E: event(new UserCreated($user))
+
+    par 동기 리스너 실행
+        E->>L1: handle(UserCreated)
+        L1->>L1: Create auth event log
+        L1-->>E: Complete
+    and
+        E->>L3: handle(UserCreated)
+        L3->>L3: Cache user data
+        L3-->>E: Complete
+    end
+
+    E->>Q: Dispatch SendWelcomeEmail
+    Note over S,E: Service는 즉시 응답 반환
+
+    Q->>L2: handle(UserCreated)
+    L2->>L2: Send welcome email
+    L2-->>Q: Complete
+```
+
+#### 파일 업로드 이벤트
+
+```mermaid
+sequenceDiagram
+    participant S as FileService
+    participant E as Event Bus
+    participant L1 as CreateFileLog (Sync)
+    participant L2 as GenerateThumbnail (Queue)
+    participant L3 as ScanVirus (Queue)
+    participant Q as Queue Worker
+
+    S->>E: event(new FileUploaded($file))
+
+    E->>L1: handle(FileUploaded)
+    L1->>L1: Create file activity log
+    L1-->>E: Complete
+
+    par 비동기 작업 큐잉
+        E->>Q: Dispatch GenerateThumbnail
+        E->>Q: Dispatch ScanVirus
+    end
+
+    Note over S,E: Service는 즉시 응답 반환
+
+    par Queue Workers
+        Q->>L2: handle(FileUploaded)
+        L2->>L2: Generate thumbnail
+        L2->>E: event(new ThumbnailGenerated($file))
+    and
+        Q->>L3: handle(FileUploaded)
+        L3->>L3: Scan for virus
+        L3->>E: event(new VirusScanCompleted($file))
+    end
+```
+
+---
+
+### 이벤트 종류
+
+#### 도메인 이벤트
+
+| 도메인 | 이벤트 | 발행 시점 | 리스너 |
+|--------|--------|----------|--------|
+| **Auth** | `UserCreated` | 사용자 생성 | SendWelcomeEmail, CreateAuthLog, UpdateUserCache |
+| **Auth** | `UserLoggedIn` | 로그인 성공 | CreateAuthLog, UpdateLoginStats |
+| **Auth** | `UserLoggedOut` | 로그아웃 | CreateAuthLog, InvalidateCache |
+| **Auth** | `SocialAccountLinked` | 소셜 계정 연동 | CreateAuthLog, SendLinkNotification |
+| **File** | `FileUploaded` | 파일 업로드 | GenerateThumbnail, ScanVirus, CreateActivityLog |
+| **File** | `FileDeleted` | 파일 삭제 | DeleteFromStorage, CreateActivityLog |
+| **Timer** | `TimerCreated` | 타이머 생성 | InvalidateCache, CreateActivityLog |
+| **Timer** | `TimerExpired` | 타이머 만료 | SendNotification, UpdateStatus |
+| **Notification** | `NotificationSent` | 알림 발송 완료 | CreateNotificationLog, UpdateStats |
+| **Notification** | `NotificationFailed` | 알림 발송 실패 | RetryNotification, AlertAdmin |
+
+#### 시스템 이벤트
+
+| 이벤트 | 발행 시점 | 리스너 |
+|--------|----------|--------|
+| `CacheMissed` | 캐시 미스 발생 | WarmupCache, LogCacheMiss |
+| `HealthCheckFailed` | Health Check 실패 | AlertAdmin, CreateIncident |
+| `QueueJobFailed` | Queue Job 실패 | RetryJob, AlertDeveloper |
+
+---
+
+### 이벤트 사용 사례
+
+#### 1. 사용자 가입 시나리오
+
+**요구사항:**
+- 사용자 생성
+- 환영 이메일 발송
+- 인증 로그 기록
+- 사용자 캐시 생성
+
+**Event-Driven 구현:**
+
+```php
+// Service Layer - 이벤트만 발행
+class SocialAuthService
+{
+    public function createUser(SocialUserDTO $dto): User
+    {
+        $user = User::create([...]);
+
+        // 단일 이벤트 발행
+        event(new UserCreated($user));
+
+        return $user;
+    }
+}
+
+// Event Listeners - 각자의 책임을 처리
+class SendWelcomeEmail implements ShouldQueue
+{
+    public function handle(UserCreated $event): void
+    {
+        Mail::to($event->user)->send(new WelcomeEmail($event->user));
+    }
+}
+
+class CreateUserAuthLog
+{
+    public function handle(UserCreated $event): void
+    {
+        $this->authEventService->createLog('user_created', $event->user);
+    }
+}
+
+class WarmupUserCache
+{
+    public function handle(UserCreated $event): void
+    {
+        $this->userCacheService->set($event->user);
+    }
+}
+```
+
+**장점:**
+- Service는 비즈니스 로직에만 집중
+- 이메일 발송 실패 시에도 사용자 생성은 성공
+- 새로운 기능 추가 시 리스너만 추가 (기존 코드 수정 불필요)
+
+---
+
+#### 2. 파일 업로드 시나리오
+
+**요구사항:**
+- 파일 저장 (MinIO)
+- 썸네일 생성 (이미지인 경우)
+- 바이러스 스캔
+- 활동 로그 기록
+
+**Event-Driven 구현:**
+
+```php
+// Service Layer
+class FileService
+{
+    public function upload(UploadedFile $file, int $userId): File
+    {
+        // 1. 파일 저장
+        $path = $this->minioRepository->store($file);
+
+        // 2. DB 레코드 생성
+        $fileModel = File::create([...]);
+
+        // 3. 이벤트 발행 (모든 후처리는 리스너가 담당)
+        event(new FileUploaded($fileModel));
+
+        return $fileModel;
+    }
+}
+
+// Event Listeners
+class GenerateThumbnail implements ShouldQueue
+{
+    public function handle(FileUploaded $event): void
+    {
+        if (! $this->isImage($event->file)) {
+            return; // 이미지가 아니면 스킵
+        }
+
+        $thumbnail = $this->generateThumbnail($event->file);
+        $event->file->update(['thumbnail_path' => $thumbnail]);
+
+        event(new ThumbnailGenerated($event->file));
+    }
+}
+
+class ScanFileForVirus implements ShouldQueue
+{
+    public function handle(FileUploaded $event): void
+    {
+        $result = $this->virusScanner->scan($event->file->path);
+
+        if ($result->infected) {
+            $event->file->delete(); // 감염된 파일 삭제
+            event(new VirusDetected($event->file));
+        } else {
+            event(new VirusScanPassed($event->file));
+        }
+    }
+}
+```
+
+---
+
+### 구현 상태
+
+> **현재 상태:** Event-Driven 아키텍처 설계 완료, 구현 예정
+
+| 구성 요소 | 상태 | 위치 | 설명 |
+|----------|------|------|------|
+| Domain Events | ⏳ 예정 | `app/Shared/Events/` | 도메인 이벤트 베이스 클래스 |
+| Event Listeners | ⏳ 예정 | `app/Domain/*/Listeners/` | 도메인별 이벤트 리스너 |
+| Queue Jobs | ✅ 일부 구현 | `app/Jobs/` | 비동기 Queue Job (알림 발송) |
+| Event Service Provider | ⏳ 예정 | `app/Providers/EventServiceProvider.php` | 이벤트 리스너 등록 |
+
+**다음 구현 단계:**
+1. Domain Event 베이스 클래스 구현 (`app/Shared/Events/DomainEvent.php`)
+2. `HasDomainEvents` Trait 구현 (Model에서 이벤트 발행)
+3. 도메인별 이벤트 클래스 정의 (UserCreated, FileUploaded 등)
+4. 이벤트 리스너 구현 (동기/비동기)
+5. EventServiceProvider에 이벤트-리스너 매핑 등록
+
+**참고 문서:**
+- [CORE.md](./CORE.md) - Core Service 아키텍처
+- [CLAUDE.md](../CLAUDE.md) - Domain Event 구현 계획
+
+---
+
 ## 도메인 서비스
 
 Core Service는 다음 도메인 서비스를 제공합니다:

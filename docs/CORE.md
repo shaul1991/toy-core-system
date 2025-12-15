@@ -603,6 +603,97 @@ final readonly class TokenDTO
 
 ---
 
+### 5. Event-Driven Architecture
+
+Core Service는 **Event-Driven Architecture(EDA)**를 지향하며, 도메인 이벤트를 통해 느슨한 결합을 달성합니다.
+
+> **전체 아키텍처:** [ARCHITECTURE.md](./ARCHITECTURE.md#event-driven-architecture) 참조
+
+#### Domain Event 패턴
+
+**이벤트 발행:**
+```php
+// app/Domain/Auth/Services/SocialAuthService.php
+public function handleCallback(string $provider, string $code): TokenDTO
+{
+    $socialUser = $this->getSocialUser($provider, $code);
+    $user = $this->findOrCreateUser($socialUser);
+
+    // 도메인 이벤트 발행
+    if ($user->wasRecentlyCreated) {
+        event(new UserCreated($user));
+    }
+
+    event(new UserLoggedIn($user, $provider));
+
+    return $this->generateTokenPair($user);
+}
+```
+
+**이벤트 리스너 (동기):**
+```php
+// app/Domain/Auth/Listeners/CreateAuthEventLog.php
+class CreateAuthEventLog
+{
+    public function handle(UserLoggedIn $event): void
+    {
+        $this->authEventService->log([
+            'user_id' => $event->user->id,
+            'event_type' => 'login',
+            'provider' => $event->provider,
+            'ip_address' => request()->ip(),
+        ]);
+    }
+}
+```
+
+**이벤트 리스너 (비동기):**
+```php
+// app/Domain/Auth/Listeners/SendWelcomeEmail.php
+class SendWelcomeEmail implements ShouldQueue
+{
+    use Queueable;
+
+    public function handle(UserCreated $event): void
+    {
+        Mail::to($event->user->email)
+            ->send(new WelcomeEmail($event->user));
+    }
+}
+```
+
+#### 주요 도메인 이벤트
+
+| 도메인 | 이벤트 | 발행 시점 |
+|--------|--------|----------|
+| **Auth** | `UserCreated` | 사용자 생성 |
+| **Auth** | `UserLoggedIn` | 로그인 성공 |
+| **Auth** | `UserLoggedOut` | 로그아웃 |
+| **Auth** | `SocialAccountLinked` | 소셜 계정 연동 |
+| **File** | `FileUploaded` | 파일 업로드 |
+| **File** | `FileDeleted` | 파일 삭제 |
+| **Timer** | `TimerCreated` | 타이머 생성 |
+| **Timer** | `TimerExpired` | 타이머 만료 |
+| **Notification** | `NotificationSent` | 알림 발송 완료 |
+| **Notification** | `NotificationFailed` | 알림 발송 실패 |
+
+#### 구현 상태
+
+| 구성 요소 | 상태 | 위치 |
+|----------|------|------|
+| Domain Events | ⏳ 예정 | `app/Shared/Events/` |
+| Event Listeners | ⏳ 예정 | `app/Domain/*/Listeners/` |
+| Queue Jobs | ✅ 일부 구현 | `app/Jobs/` |
+
+**다음 구현 단계:**
+1. Domain Event 베이스 클래스 구현
+2. HasDomainEvents Trait 구현
+3. 도메인별 이벤트 클래스 정의
+4. 이벤트 리스너 구현
+5. EventServiceProvider 등록
+
+---
+
 ## 캐싱 전략
 
 ### Redis 캐싱
