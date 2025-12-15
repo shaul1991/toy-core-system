@@ -137,23 +137,34 @@ toy-core-system/
 
 ---
 
-## Domain Documentation
+## Documentation
 
-각 도메인별 상세 문서는 `docs/` 디렉토리에서 관리됩니다.
+프로젝트의 모든 문서는 `docs/` 디렉토리에서 관리됩니다.
 
-### 도메인 문서 목록
+### 아키텍처 문서
+
+전체 애플리케이션 아키텍처 및 레이어별 상세 문서입니다.
+
+| 문서 | 설명 |
+|------|------|
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | **전체 애플리케이션 아키텍처** - 3-Tier 레이어 구조, 인증 흐름, 데이터 흐름, 배포 아키텍처 |
+| [docs/FRONTEND.md](docs/FRONTEND.md) | **Frontend Layer** - Next.js 프론트엔드 (Metronic), 페이지 구성, 라우트 보호 |
+| [docs/BFF.md](docs/BFF.md) | **BFF Layer** - Backend For Frontend, JWT 인증, API Gateway |
+| [docs/CORE.md](docs/CORE.md) | **Core Service Layer** - 도메인 로직, 비즈니스 규칙, Repository 패턴 |
+
+### 도메인 문서
+
+각 도메인 서비스의 상세 명세 문서입니다.
 
 | 도메인 | 문서 | 설명 |
 |--------|------|------|
 | Auth | [docs/AUTH.md](docs/AUTH.md) | JWT 인증 및 소셜 로그인 연동 |
-| BFF | [docs/BFF.md](docs/BFF.md) | Backend For Frontend - 프론트엔드 API 게이트웨이 |
 | Health | [docs/HEALTH.md](docs/HEALTH.md) | 서비스 연결 상태 확인 (PostgreSQL, Redis 등) |
 | Timer | [docs/TIMER.md](docs/TIMER.md) | 목표 시점까지의 남은 시간 관리 |
 | Timer 최적화 | [docs/TIMER_OPTIMIZATION.md](docs/TIMER_OPTIMIZATION.md) | Timer 도메인 성능 최적화 가이드 |
 | File | [docs/FILE.md](docs/FILE.md) | MinIO 기반 파일 저장 및 관리 |
 | Notification | [docs/NOTIFICATION.md](docs/NOTIFICATION.md) | 다채널(Email, SMS, Slack) 알림 발송 |
 | User Activity | [docs/USER_ACTIVITY.md](docs/USER_ACTIVITY.md) | MongoDB 기반 사용자 활동 로그 |
-| Frontend | [docs/FRONTEND.md](docs/FRONTEND.md) | Next.js 기반 프론트엔드 (Metronic) |
 
 ### 도메인 문서 구조
 

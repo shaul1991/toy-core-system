@@ -2,6 +2,10 @@
 
 Next.js 기반의 프론트엔드 애플리케이션입니다. Metronic v9.3.8 템플릿을 기반으로 구축되었습니다.
 
+> **📚 전체 아키텍처:** [ARCHITECTURE.md](./ARCHITECTURE.md)
+> **🔌 BFF API:** [BFF.md](./BFF.md)
+> **⚙️ Core Service:** [CORE.md](./CORE.md)
+
 ## 개요
 
 | 항목 | 설명 |
@@ -13,6 +17,40 @@ Next.js 기반의 프론트엔드 애플리케이션입니다. Metronic v9.3.8 �
 | **스타일링** | Tailwind CSS 4.x |
 | **상태 관리** | TanStack React Query |
 | **폼 관리** | React Hook Form + Zod |
+
+## 레이어 구조
+
+Frontend는 3-Tier 아키텍처의 최상위 레이어입니다:
+
+```
+┌─────────────────────────────────────────┐
+│      Frontend Layer (Next.js)           │  ← 이 문서
+│   UI/UX, User Input, Client Rendering   │
+│              /frontend                  │
+└────────────────┬────────────────────────┘
+                 │ HTTP/JSON
+                 │ /api/* (Public API)
+                 ▼
+┌─────────────────────────────────────────┐
+│        BFF Layer (Laravel)              │  ← API Gateway
+│    JWT Auth, API Gateway, Transform     │
+└────────────────┬────────────────────────┘
+                 │ /internal/* (Private)
+                 ▼
+┌─────────────────────────────────────────┐
+│      Core Service Layer (Laravel)       │  ← 비즈니스 로직
+│    Domain Logic, Business Rules, DB     │
+└─────────────────────────────────────────┘
+```
+
+**역할:**
+- **Frontend:** 사용자 UI 제공, 입력 처리, 화면 렌더링
+- **호출 대상:** BFF Layer (`/api/*`)만 호출
+- **보안:** HttpOnly Cookie로 토큰 관리 (XSS 방지)
+
+> 전체 아키텍처 상세: [ARCHITECTURE.md](./ARCHITECTURE.md)
+
+---
 
 ## 기술 스택
 
