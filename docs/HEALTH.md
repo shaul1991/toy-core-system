@@ -128,7 +128,7 @@ MinIO Health Check는 Laravel Storage를 통해 연결을 확인합니다. 다�
 ### 전체 서비스 Health Check
 
 ```
-GET /api/health
+GET /internal/health
 ```
 
 **응답 (200 OK - 모든 서비스 정상)**
@@ -194,7 +194,7 @@ GET /api/health
 ### 개별 서비스 Health Check
 
 ```
-GET /api/health/{service}
+GET /internal/health/{service}
 ```
 
 **경로 파라미터**
@@ -258,7 +258,7 @@ sequenceDiagram
     participant PG as PostgreSQL
     participant Redis as Redis
 
-    Client->>Controller: GET /api/health
+    Client->>Controller: GET /internal/health
     Controller->>Service: checkAll()
 
     par PostgreSQL Check
@@ -292,7 +292,7 @@ sequenceDiagram
     participant Service as HealthCheckService
     participant Checker as HealthChecker
 
-    Client->>Controller: GET /api/health/{service}
+    Client->>Controller: GET /internal/health/{service}
     Controller->>Service: check(service)
 
     alt Service Registered
@@ -400,11 +400,11 @@ if (config('health.checkers.mongodb.enabled', false)) {
 | 영역 | 테스트 수 | 파일 |
 |------|----------|------|
 | DTO Unit | 6개 | `tests/Unit/Domain/Health/DTOs/HealthCheckResultTest.php` |
-| Service Unit | 9개 | `tests/Unit/Domain/Health/Services/HealthCheckServiceTest.php` |
+| Service Unit | 10개 | `tests/Unit/Domain/Health/Services/HealthCheckServiceTest.php` |
 | MongoDB Checker Unit | 5개 | `tests/Unit/Domain/Health/Checkers/MongoDbHealthCheckerTest.php` |
 | MinIO Checker Unit | 2개 | `tests/Unit/Domain/Health/Checkers/MinioHealthCheckerTest.php` |
 | Feature (API) | 7개 | `tests/Feature/Domain/Health/HealthControllerTest.php` |
-| **총합** | **29개** | |
+| **총합** | **30개** | |
 
 ## 예외 처리
 
@@ -421,14 +421,14 @@ if (config('health.checkers.mongodb.enabled', false)) {
 ```yaml
 livenessProbe:
   httpGet:
-    path: /api/health
+    path: /internal/health
     port: 80
   initialDelaySeconds: 10
   periodSeconds: 30
 
 readinessProbe:
   httpGet:
-    path: /api/health
+    path: /internal/health
     port: 80
   initialDelaySeconds: 5
   periodSeconds: 10
@@ -437,7 +437,7 @@ readinessProbe:
 ### Load Balancer Health Check
 
 ```
-Health Check URL: /api/health
+Health Check URL: /internal/health
 Expected Status: 200
 Timeout: 5s
 Interval: 30s

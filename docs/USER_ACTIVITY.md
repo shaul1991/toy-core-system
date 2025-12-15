@@ -82,7 +82,7 @@ db.user_activities.createIndex({ target_type: 1, target_id: 1 });
 ### 활동 목록 조회
 
 ```
-GET /api/user-activity
+GET /internal/user-activity
 ```
 
 **쿼리 파라미터**
@@ -130,7 +130,7 @@ GET /api/user-activity
 ### 단일 조회
 
 ```
-GET /api/user-activity/{id}
+GET /internal/user-activity/{id}
 ```
 
 **응답 (200 OK)**
@@ -166,7 +166,7 @@ GET /api/user-activity/{id}
 ### 생성
 
 ```
-POST /api/user-activity
+POST /internal/user-activity
 ```
 
 **요청**
@@ -215,7 +215,7 @@ POST /api/user-activity
 ### 수정
 
 ```
-PUT /api/user-activity/{id}
+PUT /internal/user-activity/{id}
 ```
 
 **요청**
@@ -242,7 +242,7 @@ PUT /api/user-activity/{id}
 ### 삭제
 
 ```
-DELETE /api/user-activity/{id}
+DELETE /internal/user-activity/{id}
 ```
 
 **응답 (200 OK)**
@@ -256,7 +256,7 @@ DELETE /api/user-activity/{id}
 ### 사용자별 활동 조회
 
 ```
-GET /api/user-activity/user/{userId}
+GET /internal/user-activity/user/{userId}
 ```
 
 **쿼리 파라미터**
@@ -284,7 +284,7 @@ GET /api/user-activity/user/{userId}
 ### 사용자 활동 통계
 
 ```
-GET /api/user-activity/user/{userId}/stats
+GET /internal/user-activity/user/{userId}/stats
 ```
 
 **응답 (200 OK)**
@@ -307,7 +307,7 @@ GET /api/user-activity/user/{userId}/stats
 ### 사용자 활동 전체 삭제
 
 ```
-DELETE /api/user-activity/user/{userId}
+DELETE /internal/user-activity/user/{userId}
 ```
 
 **응답 (200 OK)**
@@ -334,7 +334,7 @@ sequenceDiagram
     participant Repository as MongoUserActivityRepository
     participant MongoDB
 
-    Client->>Controller: POST /api/user-activity
+    Client->>Controller: POST /internal/user-activity
     Note right of Client: { "user_id": 1, "action": "login" }
 
     Controller->>Controller: validate(request)
@@ -364,7 +364,7 @@ sequenceDiagram
     participant Repository as MongoUserActivityRepository
     participant MongoDB
 
-    Client->>Controller: GET /api/user-activity/{id}
+    Client->>Controller: GET /internal/user-activity/{id}
     Controller->>Service: getActivity(id)
     Service->>Repository: find(id)
     Repository->>Repository: Validate ObjectId format

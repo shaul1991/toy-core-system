@@ -77,7 +77,7 @@ CREATE INDEX timers_target_at_index ON timers (target_at);
 ### 타이머 조회
 
 ```
-GET /api/timers/{key}
+GET /internal/timers/{key}
 ```
 
 **응답 (200 OK)**
@@ -111,7 +111,7 @@ GET /api/timers/{key}
 ### 타이머 생성/수정 (Upsert)
 
 ```
-PUT /api/timers/{key}
+PUT /internal/timers/{key}
 ```
 
 **요청**
@@ -140,7 +140,7 @@ PUT /api/timers/{key}
 ### 타이머 삭제 (Soft Delete)
 
 ```
-DELETE /api/timers/{key}
+DELETE /internal/timers/{key}
 ```
 
 **응답 (200 OK)**
@@ -169,7 +169,7 @@ sequenceDiagram
     participant EloquentRepo as EloquentTimerRepository
     participant DB as PostgreSQL
 
-    Client->>Controller: GET /api/timers/{key}
+    Client->>Controller: GET /internal/timers/{key}
     Controller->>Service: getTimer(key)
     Service->>CacheRepo: findByKey(key)
 
@@ -216,7 +216,7 @@ sequenceDiagram
     participant Redis
     participant DB as PostgreSQL
 
-    Client->>Controller: PUT /api/timers/{key}
+    Client->>Controller: PUT /internal/timers/{key}
     Note right of Client: { "target_at": "2025-12-31T23:59:59Z" }
 
     Controller->>Controller: validate(target_at: required|date)
@@ -279,7 +279,7 @@ sequenceDiagram
     participant Redis
     participant DB as PostgreSQL
 
-    Client->>Controller: DELETE /api/timers/{key}
+    Client->>Controller: DELETE /internal/timers/{key}
     Controller->>Service: deleteTimer(key)
     Service->>CacheRepo: findByKey(key)
 
@@ -335,11 +335,11 @@ Cache::forget("timer:{$key}");
 
 | 영역 | 테스트 수 | 파일 |
 |------|----------|------|
-| Feature (API) | 18개 | `tests/Feature/Timer/TimerControllerTest.php` |
-| Service Unit | 9개 | `tests/Unit/Services/TimerServiceTest.php` |
+| Feature (API) | 16개 | `tests/Feature/Timer/TimerControllerTest.php` |
+| Service Unit | 7개 | `tests/Unit/Services/TimerServiceTest.php` |
 | Model Unit | 10개 | `tests/Unit/Models/TimerTest.php` |
-| Calculation | 11개 | `tests/Unit/Models/TimerCalculationTest.php` |
-| **총합** | **48개** | |
+| Calculation | 3개 | `tests/Unit/Models/TimerCalculationTest.php` |
+| **총합** | **36개** | |
 
 ## 참고 문서
 

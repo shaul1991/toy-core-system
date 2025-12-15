@@ -182,7 +182,7 @@ CREATE INDEX idx_nl_sent_at ON notification_logs(sent_at);
 ### 알림 발송 등록
 
 ```http
-POST /api/notifications
+POST /internal/notifications
 ```
 
 #### 요청 - 즉시 발송
@@ -260,7 +260,7 @@ POST /api/notifications
 ### 대기열 목록 조회
 
 ```http
-GET /api/notifications/queue
+GET /internal/notifications/queue
 ```
 
 #### 쿼리 파라미터
@@ -275,13 +275,13 @@ GET /api/notifications/queue
 ### 대기열 상세 조회
 
 ```http
-GET /api/notifications/queue/{id}
+GET /internal/notifications/queue/{id}
 ```
 
 ### 대기열 취소
 
 ```http
-DELETE /api/notifications/queue/{id}
+DELETE /internal/notifications/queue/{id}
 ```
 
 - `pending` 상태인 알림만 취소 가능
@@ -289,7 +289,7 @@ DELETE /api/notifications/queue/{id}
 ### 실패한 알림 재시도
 
 ```http
-POST /api/notifications/queue/{id}/retry
+POST /internal/notifications/queue/{id}/retry
 ```
 
 - `failed` 상태인 알림만 재시도 가능
@@ -298,7 +298,7 @@ POST /api/notifications/queue/{id}/retry
 ### 발송 로그 목록 조회
 
 ```http
-GET /api/notifications/logs
+GET /internal/notifications/logs
 ```
 
 #### 쿼리 파라미터
@@ -314,13 +314,13 @@ GET /api/notifications/logs
 ### 발송 로그 상세 조회
 
 ```http
-GET /api/notifications/logs/{id}
+GET /internal/notifications/logs/{id}
 ```
 
 ### 채널 목록 조회
 
 ```http
-GET /api/notifications/channels
+GET /internal/notifications/channels
 ```
 
 #### 응답
@@ -362,7 +362,7 @@ sequenceDiagram
     participant Dispatcher as NotificationDispatcher
     participant Channel as EmailChannel
 
-    Client->>Controller: POST /api/notifications
+    Client->>Controller: POST /internal/notifications
     Note right of Client: dispatch_type: "immediate"
 
     Controller->>Service: queue(immediate, ...)

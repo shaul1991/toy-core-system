@@ -99,19 +99,36 @@ Front → BFF → Business → Domain
 ```
 toy-core-system/
 ├── app/
-│   ├── Http/Controllers/    # API Controllers
-│   ├── Models/              # Eloquent Models
-│   ├── Providers/           # Service Providers
-│   └── Shared/              # 공유 컴포넌트
-│       ├── Exceptions/      # 도메인 예외 클래스
-│       └── Http/            # HTTP 공통 모듈
-├── config/                  # Configuration
-├── database/                # Migrations, Seeders
+│   ├── Domain/                  # 도메인 서비스 (DDD)
+│   │   ├── Auth/                # 인증 도메인
+│   │   ├── Health/              # Health Check 도메인
+│   │   └── UserActivity/        # 사용자 활동 도메인
+│   ├── Bff/                     # BFF 레이어
+│   │   ├── Controllers/         # BFF 컨트롤러
+│   │   ├── Middleware/          # JWT 인증 미들웨어
+│   │   └── Services/            # Core Service 클라이언트
+│   ├── Http/Controllers/        # Core Service 컨트롤러
+│   ├── Services/                # 비즈니스 서비스
+│   │   └── Notification/        # 알림 서비스
+│   ├── Repositories/            # Repository 구현체
+│   ├── Models/                  # Eloquent Models
+│   ├── Enums/                   # Enum 클래스
+│   ├── Jobs/                    # Queue Jobs
+│   ├── Console/Commands/        # Artisan Commands
+│   ├── Providers/               # Service Providers
+│   └── Shared/                  # 공유 컴포넌트
+│       ├── Exceptions/          # 도메인 예외 클래스
+│       ├── Http/                # HTTP 공통 모듈
+│       └── Database/MongoDB/    # MongoDB 연결 관리
+├── config/                      # Configuration
+├── database/                    # Migrations, Seeders
 ├── routes/
-│   ├── api.php              # API Routes
-│   └── web.php              # Web Routes
-└── tests/                   # PHPUnit Tests
-    └── Unit/Shared/         # 공통 모듈 Unit Tests
+│   ├── api.php                  # BFF API Routes (/api/*)
+│   ├── internal.php             # Core Service Routes (/internal/*)
+│   └── web.php                  # Web Routes
+└── tests/                       # PHPUnit Tests
+    ├── Feature/                 # Feature Tests
+    └── Unit/                    # Unit Tests
 ```
 
 ### Testing
@@ -132,6 +149,7 @@ toy-core-system/
 | BFF | [docs/BFF.md](docs/BFF.md) | Backend For Frontend - 프론트엔드 API 게이트웨이 |
 | Health | [docs/HEALTH.md](docs/HEALTH.md) | 서비스 연결 상태 확인 (PostgreSQL, Redis 등) |
 | Timer | [docs/TIMER.md](docs/TIMER.md) | 목표 시점까지의 남은 시간 관리 |
+| Timer 최적화 | [docs/TIMER_OPTIMIZATION.md](docs/TIMER_OPTIMIZATION.md) | Timer 도메인 성능 최적화 가이드 |
 | File | [docs/FILE.md](docs/FILE.md) | MinIO 기반 파일 저장 및 관리 |
 | Notification | [docs/NOTIFICATION.md](docs/NOTIFICATION.md) | 다채널(Email, SMS, Slack) 알림 발송 |
 | User Activity | [docs/USER_ACTIVITY.md](docs/USER_ACTIVITY.md) | MongoDB 기반 사용자 활동 로그 |

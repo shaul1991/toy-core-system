@@ -2025,11 +2025,11 @@ sequenceDiagram
 
 | 영역 | 테스트 수 | 파일 |
 |------|----------|------|
-| Feature (소셜 로그인) | - | `tests/Feature/Auth/SocialAuthControllerTest.php` |
-| Feature (JWT 인증) | - | `tests/Feature/Auth/JwtAuthenticationTest.php` |
-| Service Unit | - | `tests/Unit/Auth/SocialAuthServiceTest.php` |
-| JWT Unit | - | `tests/Unit/Auth/JwtServiceTest.php` |
-| Observer Unit | 2 | `tests/Unit/Auth/UserObserverTest.php` |
+| Feature (API) | 8개 | `tests/Feature/Auth/AuthControllerTest.php` |
+| Social Auth Service | 12개 | `tests/Unit/Auth/SocialAuthServiceTest.php` |
+| JWT Service | 9개 | `tests/Unit/Auth/JwtServiceTest.php` |
+| Observer Unit | 2개 | `tests/Unit/Auth/UserObserverTest.php` |
+| **총합** | **31개** | |
 
 ---
 

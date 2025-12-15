@@ -625,17 +625,19 @@ config/swagger-ui.php
 
 ---
 
-## 테스트
+## 테스트 커버리지
+
+| 영역 | 테스트 수 | 파일 |
+|------|----------|------|
+| Feature (API) | 11개 | `tests/Feature/Bff/AuthControllerTest.php` |
+| **총합** | **11개** | |
 
 ### 테스트 파일 위치
 
 ```
 tests/
-├── Feature/Bff/
-│   └── AuthControllerTest.php    # API Auth 통합 테스트
-└── Unit/Bff/
-    ├── JwtAuthenticateTest.php   # JWT 미들웨어 테스트
-    └── CoreAuthServiceTest.php   # Core Service 클라이언트 테스트
+└── Feature/Bff/
+    └── AuthControllerTest.php    # API Auth 통합 테스트 (11개)
 ```
 
 ## 관련 문서

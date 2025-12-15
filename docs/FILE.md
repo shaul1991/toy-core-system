@@ -110,7 +110,7 @@ MINIO_PRIVATE_BUCKET=private
 ### 파일 업로드
 
 ```
-POST /api/files
+POST /internal/files
 Content-Type: multipart/form-data
 ```
 
@@ -144,7 +144,7 @@ Content-Type: multipart/form-data
 ### 파일 메타데이터 조회
 
 ```
-GET /api/files/{id}
+GET /internal/files/{id}
 ```
 
 **응답 (200 OK)**
@@ -169,7 +169,7 @@ GET /api/files/{id}
 ### 파일 다운로드
 
 ```
-GET /api/files/{id}/download
+GET /internal/files/{id}/download
 ```
 
 **응답 (200 OK)**
@@ -184,7 +184,7 @@ Content-Disposition: attachment; filename=photo.jpg
 ### 가시성 변경
 
 ```
-PATCH /api/files/{id}/visibility
+PATCH /internal/files/{id}/visibility
 ```
 
 **요청**
@@ -210,7 +210,7 @@ PATCH /api/files/{id}/visibility
 ### 임시 URL 생성 (Private 파일용)
 
 ```
-POST /api/files/{id}/temporary-url
+POST /internal/files/{id}/temporary-url
 ```
 
 **요청**
@@ -238,7 +238,7 @@ POST /api/files/{id}/temporary-url
 ### 파일 삭제 (Soft Delete)
 
 ```
-DELETE /api/files/{id}
+DELETE /internal/files/{id}
 ```
 
 **응답 (200 OK)**
@@ -255,7 +255,7 @@ DELETE /api/files/{id}
 ### 파일 영구 삭제 (Hard Delete)
 
 ```
-DELETE /api/files/{id}/force
+DELETE /internal/files/{id}/force
 ```
 
 **응답 (200 OK)**
@@ -284,7 +284,7 @@ sequenceDiagram
     participant MinIO
     participant DB as PostgreSQL
 
-    Client->>Controller: POST /api/files
+    Client->>Controller: POST /internal/files
     Note right of Client: multipart/form-data<br/>file, visibility, path, metadata
 
     Controller->>Controller: validate(file, visibility, path, metadata)
@@ -335,7 +335,7 @@ sequenceDiagram
     participant MinIO
     participant DB as PostgreSQL
 
-    Client->>Controller: GET /api/files/{id}/download
+    Client->>Controller: GET /internal/files/{id}/download
     Controller->>Service: getFile(id)
 
     Service->>DB: SELECT * FROM files WHERE id = ?
@@ -387,7 +387,7 @@ sequenceDiagram
     participant MinIO
     participant DB as PostgreSQL
 
-    Client->>Controller: PATCH /api/files/{id}/visibility
+    Client->>Controller: PATCH /internal/files/{id}/visibility
     Note right of Client: { "visibility": "public" }
 
     Controller->>Controller: validate(visibility: required|in:public,private)
@@ -450,7 +450,7 @@ sequenceDiagram
     participant Storage as Laravel Storage
     participant MinIO
 
-    Client->>Controller: POST /api/files/{id}/temporary-url
+    Client->>Controller: POST /internal/files/{id}/temporary-url
     Note right of Client: { "expiration_minutes": 120 }
 
     Controller->>Controller: validate(expiration_minutes: min:1|max:10080)
@@ -494,7 +494,7 @@ sequenceDiagram
     participant MinIO
     participant DB as PostgreSQL
 
-    Client->>Controller: DELETE /api/files/{id}/force
+    Client->>Controller: DELETE /internal/files/{id}/force
     Controller->>Service: getFile(id)
 
     Service->>DB: SELECT * FROM files WHERE id = ?
