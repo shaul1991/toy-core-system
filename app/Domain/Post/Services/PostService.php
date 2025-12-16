@@ -6,12 +6,16 @@ namespace App\Domain\Post\Services;
 
 use App\Domain\Post\DTOs\CreatePostDTO;
 use App\Domain\Post\DTOs\UpdatePostDTO;
+use App\Domain\Post\Events\PostCreated;
+use App\Domain\Post\Events\PostPublished;
+use App\Domain\Post\Events\PostUnpublished;
 use App\Models\Post;
 use App\Shared\Exceptions\ForbiddenException;
 use App\Shared\Exceptions\NotFoundException;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 
 final class PostService
 {
@@ -111,7 +115,11 @@ final class PostService
     public function createPost(CreatePostDTO $dto): Post
     {
         return DB::transaction(function () use ($dto) {
-            return Post::create($dto->toArray());
+            $post = Post::create($dto->toArray());
+
+            Event::dispatch(new PostCreated($post));
+
+            return $post;
         });
     }
 
@@ -166,6 +174,8 @@ final class PostService
 
             $post->publish();
 
+            Event::dispatch(new PostPublished($post));
+
             return $post->fresh();
         });
     }
@@ -184,6 +194,8 @@ final class PostService
             }
 
             $post->unpublish();
+
+            Event::dispatch(new PostUnpublished($post));
 
             return $post->fresh();
         });

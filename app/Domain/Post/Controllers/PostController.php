@@ -35,7 +35,7 @@ class PostController extends Controller
         ]);
 
         $posts = $this->postService->getPosts(
-            userId: $request->integer('user_id'),
+            userId: $request->has('user_id') ? $request->integer('user_id') : null,
             status: $request->string('status')->toString() ?: null,
             perPage: $request->integer('per_page', 15),
             useCursor: $request->boolean('use_cursor', false)
