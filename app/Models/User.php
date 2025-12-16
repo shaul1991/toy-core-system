@@ -94,6 +94,14 @@ class User extends Authenticatable implements JWTSubject
     }
 
     /**
+     * 게시물 관계
+     */
+    public function posts(): HasMany
+    {
+        return $this->hasMany(Post::class);
+    }
+
+    /**
      * 모든 토큰 무효화 (token_version 증가)
      */
     public function invalidateAllTokens(): void
