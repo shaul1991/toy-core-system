@@ -9,7 +9,7 @@ export function initPostEditor(options = {}) {
         elementId = 'editor',
         initialValue = '',
         height = '600px',
-        imageUploadUrl = '/internal/files',
+        imageUploadUrl = '/api/files',  // ✅ BFF API 사용
         onSave = null,
         placeholder = '내용을 입력하세요...',
     } = options;
@@ -46,7 +46,7 @@ export function initPostEditor(options = {}) {
                     const response = await fetch(imageUploadUrl, {
                         method: 'POST',
                         headers: {
-                            'X-User-Id': getUserId(),
+                            'Authorization': `Bearer ${getAuthToken()}`,  // ✅ JWT 인증
                         },
                         body: formData,
                     });
@@ -90,9 +90,10 @@ export function initPostEditor(options = {}) {
  * 게시물 저장
  */
 export async function savePost(postData, isUpdate = false) {
+    // ✅ BFF API 사용 (/api/*)
     const url = isUpdate
-        ? `/internal/posts/${postData.id}`
-        : '/internal/posts';
+        ? `/api/posts/${postData.id}`
+        : '/api/posts';
 
     const method = isUpdate ? 'PUT' : 'POST';
 
@@ -101,7 +102,7 @@ export async function savePost(postData, isUpdate = false) {
             method,
             headers: {
                 'Content-Type': 'application/json',
-                'X-User-Id': getUserId(),
+                'Authorization': `Bearer ${getAuthToken()}`,  // ✅ JWT 인증
             },
             body: JSON.stringify(postData),
         });
@@ -124,9 +125,10 @@ export async function savePost(postData, isUpdate = false) {
  */
 export async function loadPost(postId) {
     try {
-        const response = await fetch(`/internal/posts/${postId}`, {
+        // ✅ BFF API 사용 (/api/*)
+        const response = await fetch(`/api/posts/${postId}`, {
             headers: {
-                'X-User-Id': getUserId(),
+                'Authorization': `Bearer ${getAuthToken()}`,  // ✅ JWT 인증
             },
         });
 
@@ -144,12 +146,15 @@ export async function loadPost(postId) {
 }
 
 /**
- * 현재 로그인한 사용자 ID 가져오기 (임시)
+ * 현재 로그인한 사용자 인증 토큰 가져오기
+ *
+ * ⚠️ 중요: X-User-Id 헤더로 사용자 ID를 직접 전달하는 방식은 보안 취약점입니다.
+ * JWT 토큰을 사용하여 BFF에서 검증하도록 해야 합니다.
  */
-function getUserId() {
-    // TODO: 실제 인증 구현 시 JWT 토큰에서 추출하거나 세션에서 가져오기
-    const userId = localStorage.getItem('userId') || '1';
-    return userId;
+function getAuthToken() {
+    // JWT 토큰을 localStorage에서 가져오기
+    // 실제 프로덕션에서는 HttpOnly 쿠키 사용 권장
+    return localStorage.getItem('authToken') || '';
 }
 
 /**

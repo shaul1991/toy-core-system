@@ -10,12 +10,15 @@ use App\Domain\Post\Events\PostCreated;
 use App\Domain\Post\Events\PostPublished;
 use App\Domain\Post\Events\PostUnpublished;
 use App\Models\Post;
+use App\Shared\Exceptions\ConflictException;
 use App\Shared\Exceptions\ForbiddenException;
 use App\Shared\Exceptions\NotFoundException;
 use Illuminate\Contracts\Pagination\CursorPaginator;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 
 final class PostService
 {
@@ -111,16 +114,58 @@ final class PostService
 
     /**
      * 게시물 생성
+     *
+     * UNIQUE 제약 위반 시 재시도 (slug 중복 방지)
      */
     public function createPost(CreatePostDTO $dto): Post
     {
-        return DB::transaction(function () use ($dto) {
-            $post = Post::create($dto->toArray());
+        $maxRetries = 3;
+        $attempt = 0;
 
-            Event::dispatch(new PostCreated($post));
+        while ($attempt < $maxRetries) {
+            try {
+                return DB::transaction(function () use ($dto) {
+                    $post = Post::create($dto->toArray());
 
-            return $post;
-        });
+                    Event::dispatch(new PostCreated($post));
+
+                    return $post;
+                });
+            } catch (QueryException $e) {
+                // PostgreSQL UNIQUE 제약 위반 (23505)
+                // MySQL UNIQUE 제약 위반 (23000, 1062)
+                if (in_array($e->getCode(), ['23505', '23000']) || $e->errorInfo[1] === 1062) {
+                    $attempt++;
+
+                    if ($attempt >= $maxRetries) {
+                        throw ConflictException::duplicateField('slug', $dto->slug ?? Str::slug($dto->title));
+                    }
+
+                    // 재시도 시 slug에 랜덤 접미사 추가
+                    if (empty($dto->slug)) {
+                        $dto = new CreatePostDTO(
+                            userId: $dto->userId,
+                            title: $dto->title,
+                            content: $dto->content,
+                            excerpt: $dto->excerpt,
+                            slug: Str::slug($dto->title).'-'.Str::random(6),
+                            status: $dto->status,
+                        );
+                    }
+
+                    // 잠시 대기 후 재시도 (지수 백오프)
+                    usleep(100000 * $attempt); // 100ms, 200ms, 300ms
+
+                    continue;
+                }
+
+                // 다른 예외는 그대로 throw
+                throw $e;
+            }
+        }
+
+        // 이 코드는 도달하지 않음 (타입 체커 만족용)
+        throw ConflictException::duplicateField('slug', $dto->slug ?? Str::slug($dto->title));
     }
 
     /**

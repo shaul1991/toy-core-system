@@ -39,12 +39,19 @@ class Post extends Model
             if (empty($post->slug)) {
                 $post->slug = Str::slug($post->title);
 
-                // slug 중복 방지
+                // slug 중복 방지 (최대 100회 시도)
                 $originalSlug = $post->slug;
                 $count = 1;
-                while (static::where('slug', $post->slug)->exists()) {
+                $maxAttempts = 100;
+
+                while (static::where('slug', $post->slug)->exists() && $count <= $maxAttempts) {
                     $post->slug = "{$originalSlug}-{$count}";
                     $count++;
+                }
+
+                // 최대 시도 횟수 초과 시 랜덤 접미사 추가
+                if ($count > $maxAttempts) {
+                    $post->slug = "{$originalSlug}-".Str::random(8);
                 }
             }
 

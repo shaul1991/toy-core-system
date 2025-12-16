@@ -35,6 +35,11 @@ class PostViewController extends Controller
     {
         $post = $this->postService->getPostById($id);
 
+        // 권한 확인: 작성자만 수정 가능
+        if ($post->user_id !== auth()->id()) {
+            abort(403, '게시물 수정 권한이 없습니다.');
+        }
+
         return view('posts.editor', ['post' => $post]);
     }
 
