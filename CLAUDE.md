@@ -202,6 +202,21 @@ cp docs/DOMAIN_TEMPLATE.md docs/USER.md
 - **시퀀스 다이어그램**: 복잡한 흐름은 Mermaid 다이어그램으로 시각화
 - **테스트 현황**: 테스트 수와 파일 경로를 최신 상태로 유지
 
+### 참고 문서 (Reference Packages)
+
+외부 패키지 및 라이브러리 참고 문서는 `docs/references/` 디렉토리에서 관리됩니다.
+
+| 패키지 | 문서 | 설명 |
+|--------|------|------|
+| Spatie Image | [docs/references/SPATIE_IMAGE.md](docs/references/SPATIE_IMAGE.md) | PHP 이미지 처리 패키지 - File 도메인 확장 시 이미지 처리 참고 |
+
+**참고 문서 작성 원칙:**
+- 패키지 개요 및 주요 기능
+- 설치 및 요구사항
+- 프로젝트 적용 시 통합 방법
+- 실전 예제 및 사용 패턴
+- 프로젝트 도메인과의 연계 가능성
+
 ---
 
 ## Application Architecture 공통화
