@@ -80,26 +80,26 @@ class Post extends Model
     /**
      * 발행된 게시물만 조회
      */
-    public function scopePublished($query)
+    public function scopePublished($query): void
     {
-        return $query->where('status', 'published')
+        $query->where('status', 'published')
             ->whereNotNull('published_at');
     }
 
     /**
      * 임시저장 게시물만 조회
      */
-    public function scopeDraft($query)
+    public function scopeDraft($query): void
     {
-        return $query->where('status', 'draft');
+        $query->where('status', 'draft');
     }
 
     /**
      * 특정 사용자의 게시물 조회
      */
-    public function scopeByUser($query, int $userId)
+    public function scopeByUser($query, int $userId): void
     {
-        return $query->where('user_id', $userId);
+        $query->where('user_id', $userId);
     }
 
     /**

@@ -7,8 +7,10 @@ namespace App\Domain\Post\Services;
 use App\Domain\Post\DTOs\CreatePostDTO;
 use App\Domain\Post\DTOs\UpdatePostDTO;
 use App\Domain\Post\Events\PostCreated;
+use App\Domain\Post\Events\PostDeleted;
 use App\Domain\Post\Events\PostPublished;
 use App\Domain\Post\Events\PostUnpublished;
+use App\Domain\Post\Events\PostUpdated;
 use App\Models\Post;
 use App\Shared\Exceptions\ConflictException;
 use App\Shared\Exceptions\ForbiddenException;
@@ -183,6 +185,8 @@ final class PostService
 
             $post->update($dto->toArray());
 
+            Event::dispatch(new PostUpdated($post->fresh()));
+
             return $post->fresh();
         });
     }
@@ -201,6 +205,8 @@ final class PostService
             }
 
             $post->delete();
+
+            Event::dispatch(new PostDeleted($post));
         });
     }
 
@@ -253,11 +259,21 @@ final class PostService
      */
     public function getUserPostStats(int $userId): array
     {
+        // 단일 쿼리로 최적화: 4개 쿼리 → 1개 쿼리
+        $stats = Post::where('user_id', $userId)
+            ->selectRaw('
+                COUNT(*) as total,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as published,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as draft,
+                SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as private
+            ', ['published', 'draft', 'private'])
+            ->first();
+
         return [
-            'total' => Post::byUser($userId)->count(),
-            'published' => Post::byUser($userId)->where('status', 'published')->count(),
-            'draft' => Post::byUser($userId)->where('status', 'draft')->count(),
-            'private' => Post::byUser($userId)->where('status', 'private')->count(),
+            'total' => (int) $stats->total,
+            'published' => (int) $stats->published,
+            'draft' => (int) $stats->draft,
+            'private' => (int) $stats->private,
         ];
     }
 }

@@ -13,8 +13,13 @@ Route::get('/', function () {
 |--------------------------------------------------------------------------
 */
 Route::prefix('posts')->group(function () {
+    // Public routes
     Route::get('/', [PostViewController::class, 'index'])->name('posts.index');
-    Route::get('/create', [PostViewController::class, 'create'])->name('posts.create');
-    Route::get('/{id}/edit', [PostViewController::class, 'edit'])->name('posts.edit');
     Route::get('/{slug}', [PostViewController::class, 'show'])->name('posts.show');
+
+    // Authenticated routes
+    Route::middleware('auth')->group(function () {
+        Route::get('/create', [PostViewController::class, 'create'])->name('posts.create');
+        Route::get('/{id}/edit', [PostViewController::class, 'edit'])->name('posts.edit');
+    });
 });

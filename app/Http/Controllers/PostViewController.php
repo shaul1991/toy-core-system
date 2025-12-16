@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Domain\Post\Services\PostService;
-use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class PostViewController extends Controller
@@ -25,6 +24,11 @@ class PostViewController extends Controller
      */
     public function create(): View
     {
+        // 인증 확인: 로그인한 사용자만 작성 가능
+        if (! auth()->check()) {
+            abort(401, '로그인이 필요합니다.');
+        }
+
         return view('posts.editor');
     }
 
@@ -33,6 +37,11 @@ class PostViewController extends Controller
      */
     public function edit(int $id): View
     {
+        // 인증 확인: 로그인한 사용자만 접근 가능
+        if (! auth()->check()) {
+            abort(401, '로그인이 필요합니다.');
+        }
+
         $post = $this->postService->getPostById($id);
 
         // 권한 확인: 작성자만 수정 가능

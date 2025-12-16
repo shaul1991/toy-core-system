@@ -39,6 +39,12 @@ export function initPostEditor(options = {}) {
         hooks: {
             addImageBlobHook: async (blob, callback) => {
                 try {
+                    const token = getAuthToken();
+                    if (!token) {
+                        alert('로그인이 필요합니다.');
+                        return;
+                    }
+
                     const formData = new FormData();
                     formData.append('file', blob);
                     formData.append('visibility', 'public');
@@ -46,7 +52,7 @@ export function initPostEditor(options = {}) {
                     const response = await fetch(imageUploadUrl, {
                         method: 'POST',
                         headers: {
-                            'Authorization': `Bearer ${getAuthToken()}`,  // ✅ JWT 인증
+                            'Authorization': `Bearer ${token}`,  // ✅ JWT 인증
                         },
                         body: formData,
                     });
