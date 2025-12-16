@@ -4,6 +4,12 @@
 
 BFF(Backend For Frontend)는 프론트엔드와 Core Service 사이의 중간 계층으로, 클라이언트 친화적인 API를 제공합니다.
 
+> **📚 전체 아키텍처:** [ARCHITECTURE.md](./ARCHITECTURE.md)
+>
+> **⚙️ Core Service:** [CORE.md](./CORE.md)
+>
+> **🖥️ Frontend:** [FRONTEND.md](./FRONTEND.md)
+
 ### 주요 기능
 
 - **JWT 토큰 관리**: Access Token 검증 및 Refresh Token을 통한 갱신
@@ -11,23 +17,42 @@ BFF(Backend For Frontend)는 프론트엔드와 Core Service 사이의 중간 �
 - **Core Service 호출**: 내부 Domain Service API 호출 및 응답 변환
 - **클라이언트 최적화**: 프론트엔드에 최적화된 응답 포맷 제공
 
-### 아키텍처
+### 레이어 구조
+
+BFF는 3-Tier 아키텍처의 중간 레이어입니다:
 
 ```
-Frontend (Next.js)
-    │
-    ▼ HTTP (JSON)
-API Layer (/api/*)      ← BFF 역할
-    │ - JWT 검증
-    │ - 토큰 관리
-    │ - 응답 변환
-    ▼ Internal Call
-Internal (/internal/*)   ← Core Service
-    │ - Domain 로직
-    │ - 데이터베이스
-    ▼
-Database (PostgreSQL, Redis, MongoDB)
+┌─────────────────────────────────────────┐
+│         Frontend Layer (Next.js)        │  ← 사용자 UI
+│              /frontend                  │
+└────────────────┬────────────────────────┘
+                 │ HTTP/JSON (/api/*)
+                 ▼
+┌─────────────────────────────────────────┐
+│        BFF Layer (Laravel)              │  ← 이 문서
+│    JWT Auth, API Gateway, Transform     │
+│         app/Bff/, routes/api.php        │
+└────────────────┬────────────────────────┘
+                 │ Internal Call (/internal/*)
+                 ▼
+┌─────────────────────────────────────────┐
+│      Core Service Layer (Laravel)       │  ← 비즈니스 로직
+│    Domain Logic, Business Rules, DB     │
+│   app/Domain/, app/Services/, routes/   │
+└────────────────┬────────────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────────────┐
+│    Infrastructure (PostgreSQL, Redis)   │
+└─────────────────────────────────────────┘
 ```
+
+**역할 분담:**
+- **Frontend:** UI 렌더링, 사용자 입력 처리
+- **BFF:** JWT 인증, Core Service 호출, 응답 변환
+- **Core Service:** 도메인 로직, 데이터 관리
+
+> 전체 아키텍처 상세: [ARCHITECTURE.md](./ARCHITECTURE.md)
 
 ## 파일 구조
 

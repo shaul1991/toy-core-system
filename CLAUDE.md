@@ -137,23 +137,34 @@ toy-core-system/
 
 ---
 
-## Domain Documentation
+## Documentation
 
-각 도메인별 상세 문서는 `docs/` 디렉토리에서 관리됩니다.
+프로젝트의 모든 문서는 `docs/` 디렉토리에서 관리됩니다.
 
-### 도메인 문서 목록
+### 아키텍처 문서
+
+전체 애플리케이션 아키텍처 및 레이어별 상세 문서입니다.
+
+| 문서 | 설명 |
+|------|------|
+| **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** | **전체 애플리케이션 아키텍처** - 3-Tier 레이어 구조, 인증 흐름, 데이터 흐름, 배포 아키텍처 |
+| [docs/FRONTEND.md](docs/FRONTEND.md) | **Frontend Layer** - Next.js 프론트엔드 (Metronic), 페이지 구성, 라우트 보호 |
+| [docs/BFF.md](docs/BFF.md) | **BFF Layer** - Backend For Frontend, JWT 인증, API Gateway |
+| [docs/CORE.md](docs/CORE.md) | **Core Service Layer** - 도메인 로직, 비즈니스 규칙, Repository 패턴 |
+
+### 도메인 문서
+
+각 도메인 서비스의 상세 명세 문서입니다.
 
 | 도메인 | 문서 | 설명 |
 |--------|------|------|
 | Auth | [docs/AUTH.md](docs/AUTH.md) | JWT 인증 및 소셜 로그인 연동 |
-| BFF | [docs/BFF.md](docs/BFF.md) | Backend For Frontend - 프론트엔드 API 게이트웨이 |
 | Health | [docs/HEALTH.md](docs/HEALTH.md) | 서비스 연결 상태 확인 (PostgreSQL, Redis 등) |
 | Timer | [docs/TIMER.md](docs/TIMER.md) | 목표 시점까지의 남은 시간 관리 |
 | Timer 최적화 | [docs/TIMER_OPTIMIZATION.md](docs/TIMER_OPTIMIZATION.md) | Timer 도메인 성능 최적화 가이드 |
 | File | [docs/FILE.md](docs/FILE.md) | MinIO 기반 파일 저장 및 관리 |
 | Notification | [docs/NOTIFICATION.md](docs/NOTIFICATION.md) | 다채널(Email, SMS, Slack) 알림 발송 |
 | User Activity | [docs/USER_ACTIVITY.md](docs/USER_ACTIVITY.md) | MongoDB 기반 사용자 활동 로그 |
-| Frontend | [docs/FRONTEND.md](docs/FRONTEND.md) | Next.js 기반 프론트엔드 (Metronic) |
 
 ### 도메인 문서 구조
 
@@ -206,7 +217,7 @@ cp docs/DOMAIN_TEMPLATE.md docs/USER.md
 | Form Request | ⏳ 예정 | `app/Shared/Http/Requests/` | - | 입력 검증 + 에러 응답 통합 |
 | DTO | ⏳ 예정 | `app/Shared/DTO/` | - | 레이어 간 데이터 전송 객체 |
 | Repository | ⏳ 예정 | `app/Shared/Repositories/` | - | 데이터 접근 추상화 인터페이스 |
-| Domain Event | ⏳ 예정 | `app/Shared/Events/` | - | 도메인 이벤트 기반 구조 |
+| Domain Event | 🎯 **우선순위** | `app/Shared/Events/` | - | 도메인 이벤트 기반 구조 (Event-Driven Architecture) |
 | Value Object | ⏳ 예정 | `app/Shared/ValueObjects/` | - | 불변 값 객체 베이스 클래스 |
 
 ### Form Request (예정)
@@ -272,27 +283,107 @@ class EloquentUserRepository implements UserRepositoryInterface
 **구현 예정 파일:**
 - `app/Shared/Repositories/RepositoryInterface.php` - 공통 Repository 인터페이스
 
-### Domain Event (예정)
+### Domain Event (Event-Driven Architecture)
 
-도메인 이벤트 기반의 느슨한 결합을 지원합니다.
+**우선순위:** 🎯 높음 - 시스템의 핵심 아키텍처 패턴
 
+도메인 이벤트 기반의 느슨한 결합을 지원합니다. Event-Driven Architecture(EDA)를 통해 확장 가능하고 유지보수가 용이한 시스템을 구축합니다.
+
+> **상세 문서:** [docs/ARCHITECTURE.md - Event-Driven Architecture](docs/ARCHITECTURE.md#event-driven-architecture)
+
+#### 핵심 원칙
+
+1. **느슨한 결합**: 도메인 서비스는 이벤트만 발행, 처리는 리스너가 담당
+2. **단일 책임**: 각 리스너는 하나의 명확한 책임
+3. **비동기 처리**: 중요하지 않은 작업은 Queue Job으로 처리
+4. **확장성**: 새 기능 추가 시 리스너만 추가 (기존 코드 수정 불필요)
+
+#### 구현 예시
+
+**이벤트 발행:**
 ```php
-// 도메인 이벤트 발행
-$user->raise(new UserCreated($user->id));
-
-// 이벤트 리스너에서 처리
-class SendWelcomeEmail
+// app/Domain/Auth/Services/SocialAuthService.php
+public function createUser(SocialUserDTO $dto): User
 {
-    public function handle(UserCreated $event): void
+    $user = User::create([...]);
+
+    // 도메인 이벤트 발행
+    event(new UserCreated($user));
+
+    return $user;
+}
+```
+
+**이벤트 리스너 (동기):**
+```php
+// app/Domain/Auth/Listeners/CreateAuthEventLog.php
+class CreateAuthEventLog
+{
+    public function handle(UserLoggedIn $event): void
     {
-        // 이메일 발송
+        $this->authEventService->log([
+            'user_id' => $event->user->id,
+            'event_type' => 'login',
+        ]);
     }
 }
 ```
 
+**이벤트 리스너 (비동기):**
+```php
+// app/Domain/Auth/Listeners/SendWelcomeEmail.php
+class SendWelcomeEmail implements ShouldQueue
+{
+    use Queueable;
+
+    public function handle(UserCreated $event): void
+    {
+        Mail::to($event->user->email)
+            ->send(new WelcomeEmail($event->user));
+    }
+}
+```
+
+#### 주요 도메인 이벤트
+
+| 도메인 | 이벤트 | 리스너 예시 |
+|--------|--------|------------|
+| Auth | `UserCreated` | SendWelcomeEmail, CreateAuthLog, UpdateUserCache |
+| Auth | `UserLoggedIn` | CreateAuthLog, UpdateLoginStats |
+| File | `FileUploaded` | GenerateThumbnail, ScanVirus, CreateActivityLog |
+| Timer | `TimerCreated` | InvalidateCache, CreateActivityLog |
+| Notification | `NotificationSent` | CreateNotificationLog, UpdateStats |
+
+#### 구현 단계
+
+1. **Domain Event 베이스 클래스** (`app/Shared/Events/DomainEvent.php`)
+   - 공통 이벤트 인터페이스
+   - 이벤트 메타데이터 (발생 시각, 이벤트 ID 등)
+
+2. **HasDomainEvents Trait** (`app/Shared/Events/HasDomainEvents.php`)
+   - Model에서 이벤트 발행 지원
+   - 트랜잭션 커밋 후 이벤트 발행
+
+3. **도메인별 이벤트 클래스**
+   - `app/Domain/Auth/Events/UserCreated.php`
+   - `app/Domain/Auth/Events/UserLoggedIn.php`
+   - `app/Domain/File/Events/FileUploaded.php`
+   - 등...
+
+4. **이벤트 리스너 구현**
+   - 동기 리스너: 즉시 실행 (로깅, 캐시 업데이트)
+   - 비동기 리스너: Queue Job으로 실행 (이메일, 외부 API 호출)
+
+5. **EventServiceProvider 등록**
+   - 이벤트-리스너 매핑
+   - 자동 디스커버리 설정
+
 **구현 예정 파일:**
 - `app/Shared/Events/DomainEvent.php` - 도메인 이벤트 베이스
 - `app/Shared/Events/HasDomainEvents.php` - 이벤트 발행 Trait
+- `app/Domain/*/Events/` - 도메인별 이벤트 클래스
+- `app/Domain/*/Listeners/` - 도메인별 리스너
+- `app/Providers/EventServiceProvider.php` - 이벤트 등록
 
 ### Value Object (예정)
 
