@@ -3,7 +3,9 @@
 Next.js 기반의 프론트엔드 애플리케이션입니다. Metronic v9.3.8 템플릿을 기반으로 구축되었습니다.
 
 > **📚 전체 아키텍처:** [ARCHITECTURE.md](./ARCHITECTURE.md)
+>
 > **🔌 BFF API:** [BFF.md](./BFF.md)
+>
 > **⚙️ Core Service:** [CORE.md](./CORE.md)
 
 ## 개요

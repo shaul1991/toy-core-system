@@ -5,7 +5,9 @@
 BFF(Backend For Frontend)는 프론트엔드와 Core Service 사이의 중간 계층으로, 클라이언트 친화적인 API를 제공합니다.
 
 > **📚 전체 아키텍처:** [ARCHITECTURE.md](./ARCHITECTURE.md)
+>
 > **⚙️ Core Service:** [CORE.md](./CORE.md)
+>
 > **🖥️ Frontend:** [FRONTEND.md](./FRONTEND.md)
 
 ### 주요 기능
