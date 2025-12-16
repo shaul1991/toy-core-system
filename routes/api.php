@@ -1,6 +1,7 @@
 <?php
 
 use App\Bff\Controllers\AuthController;
+use App\Bff\Controllers\PostController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -75,5 +76,67 @@ Route::prefix('auth')->group(function () {
         Route::delete('{provider}/unlink', [AuthController::class, 'unlink'])
             ->where('provider', 'github|naver|kakao')
             ->middleware('throttle:5,1');
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Post Routes
+|--------------------------------------------------------------------------
+|
+| 게시물 관련 BFF 엔드포인트
+| - 게시물 CRUD
+| - 발행 관리
+| - 통계 조회
+|
+*/
+Route::prefix('posts')->group(function () {
+    // 공개 엔드포인트 (인증 불필요)
+
+    // 발행된 게시물 목록 조회
+    Route::get('published', [PostController::class, 'published'])
+        ->middleware('throttle:60,1');
+
+    // 발행된 게시물 상세 조회 (slug)
+    Route::get('slug/{slug}/published', [PostController::class, 'showPublishedBySlug'])
+        ->middleware('throttle:60,1');
+
+    // 인증 필요 엔드포인트
+    Route::middleware('bff.auth')->group(function () {
+        // CRUD
+        Route::get('/', [PostController::class, 'index'])
+            ->middleware('throttle:60,1');
+
+        Route::post('/', [PostController::class, 'store'])
+            ->middleware('throttle:30,1');
+
+        Route::get('{id}', [PostController::class, 'show'])
+            ->where('id', '[0-9]+')
+            ->middleware('throttle:60,1');
+
+        Route::put('{id}', [PostController::class, 'update'])
+            ->where('id', '[0-9]+')
+            ->middleware('throttle:30,1');
+
+        Route::delete('{id}', [PostController::class, 'destroy'])
+            ->where('id', '[0-9]+')
+            ->middleware('throttle:10,1');
+
+        // slug 조회
+        Route::get('slug/{slug}', [PostController::class, 'showBySlug'])
+            ->middleware('throttle:60,1');
+
+        // 발행 관리
+        Route::post('{id}/publish', [PostController::class, 'publish'])
+            ->where('id', '[0-9]+')
+            ->middleware('throttle:10,1');
+
+        Route::post('{id}/unpublish', [PostController::class, 'unpublish'])
+            ->where('id', '[0-9]+')
+            ->middleware('throttle:10,1');
+
+        // 통계
+        Route::get('stats', [PostController::class, 'stats'])
+            ->middleware('throttle:60,1');
     });
 });

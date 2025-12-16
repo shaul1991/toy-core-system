@@ -102,6 +102,7 @@ toy-core-system/
 │   ├── Domain/                  # 도메인 서비스 (DDD)
 │   │   ├── Auth/                # 인증 도메인
 │   │   ├── Health/              # Health Check 도메인
+│   │   ├── Post/                # 블로그 게시물 도메인
 │   │   └── UserActivity/        # 사용자 활동 도메인
 │   ├── Bff/                     # BFF 레이어
 │   │   ├── Controllers/         # BFF 컨트롤러
@@ -165,6 +166,7 @@ toy-core-system/
 | File | [docs/FILE.md](docs/FILE.md) | MinIO 기반 파일 저장 및 관리 |
 | Notification | [docs/NOTIFICATION.md](docs/NOTIFICATION.md) | 다채널(Email, SMS, Slack) 알림 발송 |
 | User Activity | [docs/USER_ACTIVITY.md](docs/USER_ACTIVITY.md) | MongoDB 기반 사용자 활동 로그 |
+| Post | [docs/POST.md](docs/POST.md) | Markdown 기반 블로그 게시물 관리 (Toast UI Editor) |
 
 ### 도메인 문서 구조
 

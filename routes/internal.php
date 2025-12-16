@@ -3,6 +3,7 @@
 use App\Domain\Auth\Controllers\AuthController;
 use App\Domain\Auth\Controllers\SocialAuthController;
 use App\Domain\Health\Controllers\HealthController;
+use App\Domain\Post\Controllers\PostController;
 use App\Domain\UserActivity\Controllers\UserActivityController;
 use App\Http\Controllers\FileController;
 use App\Http\Controllers\NotificationController;
@@ -135,4 +136,35 @@ Route::prefix('user-activity')->middleware('user.id:optional')->group(function (
         ->where('userId', '[0-9]+');
     Route::delete('user/{userId}', [UserActivityController::class, 'destroyByUser'])
         ->where('userId', '[0-9]+');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Post Routes
+|--------------------------------------------------------------------------
+*/
+Route::prefix('posts')->group(function () {
+    // 공개 엔드포인트 (인증 불필요)
+    Route::get('published', [PostController::class, 'published']);
+    Route::get('slug/{slug}/published', [PostController::class, 'showPublishedBySlug']);
+
+    // 인증 필요 엔드포인트
+    Route::middleware('user.id')->group(function () {
+        // CRUD
+        Route::get('/', [PostController::class, 'index']);
+        Route::post('/', [PostController::class, 'store']);
+        Route::get('{id}', [PostController::class, 'show'])->where('id', '[0-9]+');
+        Route::put('{id}', [PostController::class, 'update'])->where('id', '[0-9]+');
+        Route::delete('{id}', [PostController::class, 'destroy'])->where('id', '[0-9]+');
+
+        // slug 조회
+        Route::get('slug/{slug}', [PostController::class, 'showBySlug']);
+
+        // 발행 관리
+        Route::post('{id}/publish', [PostController::class, 'publish'])->where('id', '[0-9]+');
+        Route::post('{id}/unpublish', [PostController::class, 'unpublish'])->where('id', '[0-9]+');
+
+        // 통계
+        Route::get('stats', [PostController::class, 'stats']);
+    });
 });
