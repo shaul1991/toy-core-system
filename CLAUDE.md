@@ -211,6 +211,7 @@ cp docs/DOMAIN_TEMPLATE.md docs/USER.md
 | Spatie Image | [docs/references/SPATIE_IMAGE.md](docs/references/SPATIE_IMAGE.md) | PHP 이미지 처리 패키지 - File 도메인 확장 시 이미지 처리 참고 |
 | Laravel Page Speed | [docs/references/LARAVEL_PAGE_SPEED.md](docs/references/LARAVEL_PAGE_SPEED.md) | Laravel 웹 성능 최적화 미들웨어 - BFF 레이어 성능 개선, API 압축 및 캐싱 |
 | Laravel Reverb | [docs/references/LARAVEL_REVERB.md](docs/references/LARAVEL_REVERB.md) | 실시간 WebSocket 서버 - Notification, Post, Timer 도메인 실시간 통신, 라이브 알림, 채팅, 대시보드 |
+| Laravel Filament | [docs/references/FILAMENT.md](docs/references/FILAMENT.md) | 관리자 패널 & UI 프레임워크 - Post, File, Timer, User Activity 도메인 백오피스 관리, CRUD 인터페이스, 대시보드 위젯 |
 
 **참고 문서 작성 원칙:**
 - 패키지 개요 및 주요 기능
