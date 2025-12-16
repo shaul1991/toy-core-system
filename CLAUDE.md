@@ -209,6 +209,7 @@ cp docs/DOMAIN_TEMPLATE.md docs/USER.md
 | 패키지 | 문서 | 설명 |
 |--------|------|------|
 | Spatie Image | [docs/references/SPATIE_IMAGE.md](docs/references/SPATIE_IMAGE.md) | PHP 이미지 처리 패키지 - File 도메인 확장 시 이미지 처리 참고 |
+| n8n | [docs/references/N8N.md](docs/references/N8N.md) | 워크플로우 자동화 플랫폼 - Domain Event 기반 자동화, 외부 서비스 통합, 알림 확장 |
 
 **참고 문서 작성 원칙:**
 - 패키지 개요 및 주요 기능
