@@ -127,7 +127,11 @@ Front → BFF → Business → Domain
 | Cache | Redis 8 |
 | NoSQL | MongoDB 8 |
 | Object Storage | MinIO |
+| Admin Panel | Filament 4.x |
+| Frontend | Tailwind CSS 4.x (Vite) |
+| Testing | PHPUnit 11.x |
 | Monitoring | Sentry |
+| API Docs | Swagger UI (OpenAPI 3.0) |
 
 ## Development
 
@@ -143,7 +147,11 @@ Front → BFF → Business → Domain
 ### Setup
 
 ```bash
+# 프로젝트 초기 설정
 composer setup
+
+# Filament 에셋 생성 (필수)
+php artisan filament:assets
 ```
 
 ### Run Development Server
@@ -151,6 +159,22 @@ composer setup
 ```bash
 composer dev
 ```
+
+### Admin Panel
+
+Filament 기반 관리자 패널이 제공됩니다.
+
+```bash
+# Admin Panel 접속
+http://localhost:8000/admin
+
+# 관리자 사용자 생성
+php artisan make:filament-user
+```
+
+**관련 문서:**
+- [Filament 설치 가이드](docs/FILAMENT_SETUP.md)
+- [Filament 참고 문서](docs/references/FILAMENT.md)
 
 ### Run Tests
 
@@ -169,16 +193,34 @@ composer test
 ```
 toy-core-system/
 ├── app/
-│   ├── Http/Controllers/    # API Controllers
-│   ├── Services/            # Domain Logic (예정)
-│   ├── Models/              # Eloquent Models
-│   └── Providers/           # Service Providers
-├── config/                  # Configuration
-├── database/                # Migrations, Seeders
+│   ├── Domain/                     # Domain Services (DDD)
+│   │   ├── Auth/                   # 인증 도메인
+│   │   ├── Post/                   # 블로그 게시물 도메인
+│   │   ├── File/                   # 파일 관리 도메인
+│   │   └── Timer/                  # 타이머 도메인
+│   ├── Filament/                   # Admin Panel (Filament)
+│   │   ├── Resources/              # CRUD Resources
+│   │   ├── Pages/                  # Custom Pages
+│   │   └── Widgets/                # Dashboard Widgets
+│   ├── Http/Controllers/           # API Controllers
+│   ├── Services/                   # Business Services
+│   ├── Models/                     # Eloquent Models
+│   ├── Shared/                     # Shared Components
+│   │   ├── Http/                   # HTTP Response, Pagination
+│   │   └── Exceptions/             # Domain Exceptions
+│   └── Providers/                  # Service Providers
+│       └── Filament/               # Filament Panel Providers
+├── config/                         # Configuration
+├── database/                       # Migrations, Seeders
+├── docs/                           # Documentation
+│   ├── FILAMENT_SETUP.md           # Filament 설치 가이드
+│   └── references/                 # Package References
+│       └── FILAMENT.md             # Filament 참고 문서
 ├── routes/
-│   ├── api.php              # API Routes (예정)
-│   └── web.php              # Web Routes
-└── tests/                   # PHPUnit Tests
+│   ├── api.php                     # BFF API Routes (/api/*)
+│   ├── internal.php                # Core Service Routes (/internal/*)
+│   └── web.php                     # Web Routes
+└── tests/                          # PHPUnit Tests
 ```
 
 ## License
