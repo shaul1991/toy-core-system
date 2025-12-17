@@ -24,3 +24,8 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /.playwright-mcp/
+
+# Filament generated assets (run `php artisan filament:assets` to generate)
+/public/css/filament/
+/public/fonts/filament/
+/public/js/filament/

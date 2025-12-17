@@ -9,8 +9,18 @@
 
 ### 2. Admin Panel 생성
 - ✅ `AdminPanelProvider` 생성 완료 (`app/Providers/Filament/AdminPanelProvider.php`)
-- ✅ Filament 에셋 발행 완료 (`public/js/filament/`, `public/css/filament/`)
 - ✅ Provider 자동 등록 완료 (`bootstrap/providers.php`)
+
+> **⚠️ 중요: Filament 에셋 생성**
+>
+> Filament 에셋 파일(JS, CSS, 폰트)은 **버전 관리에서 제외**되어 있습니다.
+> 로컬 개발 환경에서 처음 설치하거나, Filament 업데이트 후에는 반드시 아래 명령어를 실행하세요:
+>
+> ```bash
+> php artisan filament:assets
+> ```
+>
+> **배포 시**: CI/CD 파이프라인에서 `php artisan filament:assets` 명령을 실행하도록 설정하세요.
 
 ### 3. 브랜딩 설정
 - ✅ 브랜드명: **Toy Core System**
@@ -82,16 +92,30 @@ class AdminUserSeeder extends Seeder
         User::create([
             'name' => 'Admin',
             'email' => 'admin@toy-core-system.com',
-            'password' => bcrypt('admin1234'),
+            // TODO: Set a secure password via environment variable
+            // NEVER commit real credentials to version control
+            'password' => bcrypt(env('ADMIN_PASSWORD', '<YOUR_SECURE_PASSWORD>')),
             'email_verified_at' => now(),
         ]);
     }
 }
 ```
 
+**환경 변수 설정 (.env):**
+```bash
+# .env 파일에 추가
+ADMIN_PASSWORD=your-secure-password-here
+```
+
+**Seeder 실행:**
 ```bash
 php artisan db:seed --class=AdminUserSeeder
 ```
+
+> **🔒 보안 주의사항:**
+> - 절대로 실제 비밀번호를 코드에 하드코딩하지 마세요
+> - `.env` 파일은 버전 관리에서 제외되어 있습니다
+> - 프로덕션 환경에서는 강력한 비밀번호를 사용하세요 (최소 12자 이상, 특수문자 포함)
 
 ---
 

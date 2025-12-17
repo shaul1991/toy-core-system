@@ -51,7 +51,13 @@ composer dev
 
 # 프로젝트 초기 설정
 composer setup
+
+# Filament Admin Panel 에셋 생성 (처음 설치 시 또는 Filament 업데이트 후 필수)
+php artisan filament:assets
 ```
+
+> **⚠️ 중요**: Filament 에셋 파일은 버전 관리에서 제외되어 있습니다.
+> 프로젝트를 처음 클론한 후, 또는 Filament 패키지 업데이트 후에는 반드시 `php artisan filament:assets` 명령을 실행하세요.
 
 ### Testing
 
