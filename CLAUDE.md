@@ -96,45 +96,416 @@ Front → BFF → Business → Domain
 
 ### Directory Structure
 
+> **아키텍처 혼용:** 이 프로젝트는 DDD와 전통적 Laravel 구조를 혼용합니다.
+> - **DDD 구조**: Auth, Health, Post, UserActivity → `app/Domain/`
+> - **전통적 구조**: Timer, File, Notification → `app/Http/Controllers/`, `app/Services/`
+
 ```
 toy-core-system/
 ├── app/
 │   ├── Domain/                  # 도메인 서비스 (DDD)
-│   │   ├── Auth/                # 인증 도메인
+│   │   ├── Auth/                # 인증 도메인 (소셜 로그인, JWT)
+│   │   │   ├── Controllers/     # BFF 컨트롤러
+│   │   │   ├── Services/        # 비즈니스 로직
+│   │   │   ├── Repositories/    # 데이터 접근
+│   │   │   ├── DTOs/            # 데이터 전송 객체
+│   │   │   ├── Observers/       # 모델 옵저버
+│   │   │   ├── Exceptions/      # 도메인 예외
+│   │   │   └── Contracts/       # 인터페이스
 │   │   ├── Health/              # Health Check 도메인
+│   │   │   ├── Controllers/     # 헬스체크 컨트롤러
+│   │   │   ├── Services/        # 헬스체크 서비스
+│   │   │   ├── Checkers/        # 각종 헬스 체커
+│   │   │   ├── DTOs/            # 헬스체크 DTO
+│   │   │   └── Contracts/       # 헬스체크 인터페이스
 │   │   ├── Post/                # 블로그 게시물 도메인
-│   │   └── UserActivity/        # 사용자 활동 도메인
+│   │   │   ├── Controllers/     # 게시물 컨트롤러
+│   │   │   ├── Services/        # 게시물 서비스
+│   │   │   ├── Events/          # 도메인 이벤트
+│   │   │   └── DTOs/            # 게시물 DTO
+│   │   └── UserActivity/        # 사용자 활동 도메인 (MongoDB)
+│   │       ├── Controllers/     # 활동 로그 컨트롤러
+│   │       ├── Services/        # 활동 로그 서비스
+│   │       └── Repositories/    # MongoDB 리포지토리
 │   ├── Bff/                     # BFF 레이어
 │   │   ├── Controllers/         # BFF 컨트롤러
 │   │   ├── Middleware/          # JWT 인증 미들웨어
 │   │   └── Services/            # Core Service 클라이언트
-│   ├── Http/Controllers/        # Core Service 컨트롤러
+│   ├── Http/Controllers/        # Core Service 컨트롤러 (전통적 구조)
+│   │   ├── FileController.php   # 파일 관리 (MinIO)
+│   │   ├── TimerController.php  # 타이머 관리 (Redis)
+│   │   └── NotificationController.php  # 알림 발송
 │   ├── Services/                # 비즈니스 서비스
+│   │   ├── FileService.php      # 파일 서비스
+│   │   ├── TimerService.php     # 타이머 서비스
 │   │   └── Notification/        # 알림 서비스
+│   │       ├── NotificationService.php
+│   │       └── Channels/        # 알림 채널 (Email, SMS, Slack)
 │   ├── Repositories/            # Repository 구현체
+│   │   └── CachedFileRepository.php
 │   ├── Models/                  # Eloquent Models
+│   │   ├── User.php             # 사용자
+│   │   ├── Post.php             # 게시물
+│   │   ├── File.php             # 파일
+│   │   ├── Timer.php            # 타이머
+│   │   ├── SocialAccount.php    # 소셜 계정
+│   │   ├── NotificationQueue.php # 알림 큐
+│   │   └── NotificationLog.php  # 알림 로그
 │   ├── Enums/                   # Enum 클래스
+│   │   └── Notification/        # 알림 관련 Enum
 │   ├── Jobs/                    # Queue Jobs
 │   ├── Console/Commands/        # Artisan Commands
 │   ├── Providers/               # Service Providers
 │   └── Shared/                  # 공유 컴포넌트
 │       ├── Exceptions/          # 도메인 예외 클래스
+│       │   ├── DomainException.php      # 베이스 예외
+│       │   ├── NotFoundException.php    # 404
+│       │   ├── BadRequestException.php  # 400
+│       │   ├── ConflictException.php    # 409
+│       │   └── ...              # 기타 예외들
 │       ├── Http/                # HTTP 공통 모듈
+│       │   ├── ApiResponse.php  # 응답 빌더
+│       │   ├── ApiResponseCode.php # 응답 코드
+│       │   ├── Pagination/      # 페이지네이션
+│       │   └── Traits/          # HTTP Traits
 │       └── Database/MongoDB/    # MongoDB 연결 관리
 ├── config/                      # Configuration
 ├── database/                    # Migrations, Seeders
+│   ├── migrations/              # DB 마이그레이션
+│   └── seeders/                 # 시드 데이터
+├── docs/                        # 프로젝트 문서
+│   ├── ARCHITECTURE.md          # 전체 아키텍처
+│   ├── DEVELOPMENT_PROCESS.md   # 개발 프로세스
+│   ├── *.md                     # 도메인별 문서
+│   └── references/              # 외부 패키지 참고 문서
 ├── routes/
 │   ├── api.php                  # BFF API Routes (/api/*)
 │   ├── internal.php             # Core Service Routes (/internal/*)
-│   └── web.php                  # Web Routes
-└── tests/                       # PHPUnit Tests
-    ├── Feature/                 # Feature Tests
-    └── Unit/                    # Unit Tests
+│   ├── web.php                  # Web Routes
+│   └── console.php              # Console Routes
+├── tests/                       # PHPUnit Tests (32+ files)
+│   ├── Feature/                 # Feature Tests
+│   │   ├── Auth/                # 인증 테스트
+│   │   ├── Bff/                 # BFF 테스트
+│   │   └── Shared/              # 공통 기능 테스트
+│   └── Unit/                    # Unit Tests
+│       ├── Auth/                # 인증 유닛 테스트
+│       ├── Domain/              # 도메인 유닛 테스트
+│       ├── Models/              # 모델 유닛 테스트
+│       ├── Services/            # 서비스 유닛 테스트
+│       └── Shared/              # 공통 유닛 테스트
+└── resources/
+    ├── swagger/                 # Swagger OpenAPI 스펙
+    └── views/                   # Blade 템플릿
 ```
 
 ### Testing
 
 테스트는 인메모리 SQLite 데이터베이스를 사용합니다 (`phpunit.xml` 참조).
+
+### Development Process
+
+프로젝트의 개발 프로세스 및 레이어별 책임에 대한 자세한 내용은 다음 문서를 참고하세요:
+
+**[docs/DEVELOPMENT_PROCESS.md](docs/DEVELOPMENT_PROCESS.md)** - 개발 작업 프로세스 가이드
+- 3-Tier 레이어 구조 상세 설명
+- 레이어별 책임 (Frontend, BFF, Core Service)
+- API 설계 원칙
+- 보안 가이드 (Internal API 격리 원칙)
+- 테스트 전략
+- 배포 고려사항
+
+> **⚠️ 중요:** Internal API (`/internal/*`)는 절대 외부에 공개되어서는 안 됩니다.
+> 모든 외부 요청은 반드시 BFF 레이어를 거쳐야 합니다.
+
+---
+
+## AI Assistant Guidance
+
+Claude Code 또는 다른 AI 어시스턴트가 이 코드베이스 작업 시 준수해야 할 가이드라인입니다.
+
+### 코드 작성 원칙
+
+1. **기존 패턴 따르기**
+   - 새 기능 추가 시 기존 도메인의 패턴을 참고
+   - DDD 구조 도메인: Auth, Health, Post, UserActivity를 참고
+   - 전통적 구조 도메인: Timer, File, Notification을 참고
+
+2. **공통 모듈 활용**
+   - HTTP 응답: 반드시 `ApiResponse`와 `ApiResponsable` trait 사용
+   - 예외 처리: `app/Shared/Exceptions/` 의 도메인 예외 사용
+   - 페이지네이션: `OffsetPagination` 또는 `CursorPagination` 사용
+
+3. **문서화**
+   - 새 도메인 추가 시 `docs/DOMAIN_TEMPLATE.md`를 복사하여 문서 생성
+   - API 변경 시 해당 도메인 문서의 API 섹션 업데이트
+   - `CLAUDE.md`의 도메인 목록 테이블 업데이트
+
+4. **테스트 작성**
+   - 모든 새 기능에 대한 테스트 작성 필수
+   - Unit 테스트: 비즈니스 로직, 서비스 클래스
+   - Feature 테스트: API 엔드포인트, 통합 시나리오
+
+### 코드 스타일
+
+- **PSR-12** 준수 (Laravel Pint 사용)
+- **Strict Types**: 모든 PHP 파일에 `declare(strict_types=1);` 선언
+- **타입 힌팅**: 파라미터 및 리턴 타입 명시
+- **Final 클래스**: DTO, Value Object는 `final` 키워드 사용
+- **Readonly 속성**: PHP 8.4+ readonly property 적극 활용
+
+```php
+<?php
+
+declare(strict_types=1);
+
+namespace App\Domain\Example;
+
+final readonly class ExampleDTO
+{
+    public function __construct(
+        public string $name,
+        public int $age,
+    ) {}
+}
+```
+
+### 파일 참조 규칙
+
+코드나 구현을 참조할 때는 다음 형식을 사용하세요:
+
+- **파일 경로**: `app/Domain/Auth/Services/SocialAuthService.php`
+- **특정 라인**: `app/Domain/Auth/Services/SocialAuthService.php:42`
+- **메서드**: `SocialAuthService::createUser()` at `app/Domain/Auth/Services/SocialAuthService.php:42`
+
+### 작업 시작 전 체크리스트
+
+1. **문서 읽기**
+   - 해당 도메인의 문서 (`docs/{DOMAIN}.md`) 확인
+   - 관련 참고 문서 (`docs/references/`) 확인
+   - `docs/DEVELOPMENT_PROCESS.md` 리뷰
+
+2. **기존 코드 분석**
+   - 유사한 기능의 구현 찾기
+   - 사용 중인 패턴 및 컨벤션 파악
+   - 테스트 코드 확인
+
+3. **영향 범위 확인**
+   - 변경이 다른 도메인에 영향을 주는지 확인
+   - API 변경 시 BFF 레이어 영향 검토
+   - 데이터베이스 마이그레이션 필요 여부 확인
+
+### 일반적인 작업 플로우
+
+```bash
+# 1. 브랜치 생성
+git checkout -b feature/your-feature-name
+
+# 2. 코드 작성
+
+# 3. 코드 스타일 검사 및 수정
+./vendor/bin/pint
+
+# 4. 테스트 실행
+composer test
+
+# 5. 커밋 및 푸시
+git add .
+git commit -m "feat: Add your feature description"
+git push -u origin feature/your-feature-name
+
+# 6. Pull Request 생성
+```
+
+### 주의사항 (Common Pitfalls)
+
+#### 1. Internal API 노출 금지
+
+❌ **잘못된 예:**
+```php
+// routes/web.php 또는 routes/api.php에서
+Route::get('/timers/{key}', [TimerController::class, 'show']);
+```
+
+✅ **올바른 예:**
+```php
+// routes/internal.php에서만 정의
+Route::get('/timers/{key}', [TimerController::class, 'show']);
+
+// BFF에서 Internal API 호출
+// app/Bff/Services/CoreTimerService.php
+public function getTimer(string $key): array
+{
+    $response = Http::get(config('services.core.url') . "/internal/timers/{$key}");
+    return $response->json();
+}
+```
+
+#### 2. ApiResponse 사용하지 않음
+
+❌ **잘못된 예:**
+```php
+return response()->json(['data' => $user], 200);
+```
+
+✅ **올바른 예:**
+```php
+use App\Shared\Http\Traits\ApiResponsable;
+
+class UserController extends Controller
+{
+    use ApiResponsable;
+
+    public function show(User $user): JsonResponse
+    {
+        return $this->successResponse($user);
+    }
+}
+```
+
+#### 3. 예외를 직접 throw하지 않고 수동 에러 응답
+
+❌ **잘못된 예:**
+```php
+if (!$user) {
+    return response()->json(['error' => 'User not found'], 404);
+}
+```
+
+✅ **올바른 예:**
+```php
+use App\Shared\Exceptions\NotFoundException;
+
+if (!$user) {
+    throw NotFoundException::forResource('User', $id);
+}
+```
+
+#### 4. 새 도메인 추가 시 문서 누락
+
+❌ **잘못된 예:**
+- 도메인 코드만 작성하고 문서 없음
+
+✅ **올바른 예:**
+```bash
+# 1. 도메인 코드 작성
+mkdir -p app/Domain/Payment
+
+# 2. 문서 생성
+cp docs/DOMAIN_TEMPLATE.md docs/PAYMENT.md
+
+# 3. CLAUDE.md 도메인 목록 업데이트
+# "도메인 문서" 테이블에 Payment 추가
+```
+
+#### 5. 하드코딩된 URL 또는 설정값
+
+❌ **잘못된 예:**
+```php
+$url = 'http://localhost:8000/internal/files';
+```
+
+✅ **올바른 예:**
+```php
+$url = config('services.core.url') . '/internal/files';
+```
+
+#### 6. 타입 힌팅 누락
+
+❌ **잘못된 예:**
+```php
+public function createUser($data)
+{
+    return User::create($data);
+}
+```
+
+✅ **올바른 예:**
+```php
+public function createUser(array $data): User
+{
+    return User::create($data);
+}
+```
+
+### Debugging & Troubleshooting
+
+#### 로그 확인
+
+```bash
+# 실시간 로그 확인 (Laravel Pail)
+php artisan pail
+
+# 특정 로그 레벨만 보기
+php artisan pail --filter="level:error"
+
+# 로그 파일 직접 확인
+tail -f storage/logs/laravel.log
+```
+
+#### 캐시 문제
+
+```bash
+# 모든 캐시 클리어
+php artisan cache:clear
+php artisan config:clear
+php artisan route:clear
+php artisan view:clear
+
+# 전체 최적화 재생성
+php artisan optimize:clear
+php artisan optimize
+```
+
+#### 데이터베이스 이슈
+
+```bash
+# 마이그레이션 상태 확인
+php artisan migrate:status
+
+# 마이그레이션 롤백
+php artisan migrate:rollback
+
+# Fresh 마이그레이션 (테스트 환경)
+php artisan migrate:fresh --seed
+```
+
+#### Queue 디버깅
+
+```bash
+# 큐 작업 실시간 처리 (동기)
+php artisan queue:work --tries=1
+
+# 실패한 작업 확인
+php artisan queue:failed
+
+# 실패한 작업 재시도
+php artisan queue:retry {id}
+php artisan queue:retry all
+```
+
+#### Redis 확인
+
+```bash
+# Redis 연결 테스트
+php artisan tinker
+>>> Redis::ping()
+>>> Redis::get('test-key')
+
+# Redis 캐시 키 확인
+>>> Redis::keys('*')
+```
+
+#### 일반적인 문제 해결
+
+| 문제 | 원인 | 해결 방법 |
+|------|------|----------|
+| `Class not found` | Autoload 갱신 필요 | `composer dump-autoload` |
+| `.env` 변경 반영 안 됨 | Config 캐시 | `php artisan config:clear` |
+| Route 변경 반영 안 됨 | Route 캐시 | `php artisan route:clear` |
+| JWT 인증 실패 | Secret 키 미설정 | `.env`에 `JWT_SECRET` 확인 |
+| MongoDB 연결 실패 | Extension 미설치 | `pecl install mongodb` |
+| MinIO 업로드 실패 | Bucket 없음 | MinIO 콘솔에서 bucket 생성 |
 
 ---
 
@@ -708,3 +1079,190 @@ throw (new NotFoundException('사용자를 찾을 수 없습니다.'))
 
 - `tests/Unit/Shared/Exceptions/DomainExceptionTest.php` - DomainException Unit 테스트
 - `tests/Feature/Shared/Exceptions/ExceptionHandlerTest.php` - Exception Handler Feature 테스트
+
+---
+
+## Quick Reference
+
+AI 어시스턴트를 위한 빠른 참조 가이드입니다.
+
+### 주요 파일 위치
+
+| 카테고리 | 파일 경로 | 설명 |
+|---------|----------|------|
+| **라우트** | `routes/api.php` | BFF API 라우트 |
+| | `routes/internal.php` | Core Service 라우트 (외부 노출 금지) |
+| | `routes/web.php` | 웹 라우트 |
+| **공통 HTTP** | `app/Shared/Http/ApiResponse.php` | API 응답 빌더 |
+| | `app/Shared/Http/ApiResponseCode.php` | 응답 코드 Enum |
+| | `app/Shared/Http/Traits/ApiResponsable.php` | 컨트롤러 Trait |
+| **예외 처리** | `app/Shared/Exceptions/DomainException.php` | 도메인 예외 베이스 |
+| | `app/Shared/Exceptions/Handler.php` | 글로벌 예외 핸들러 |
+| | `app/Shared/Exceptions/NotFoundException.php` | 404 예외 |
+| **설정** | `.env.example` | 환경 변수 템플릿 |
+| | `config/` | 애플리케이션 설정 |
+| | `phpunit.xml` | 테스트 설정 |
+| **문서** | `CLAUDE.md` | AI 어시스턴트 가이드 (이 파일) |
+| | `README.md` | 프로젝트 README |
+| | `docs/ARCHITECTURE.md` | 전체 아키텍처 |
+| | `docs/DEVELOPMENT_PROCESS.md` | 개발 프로세스 |
+| | `docs/{DOMAIN}.md` | 도메인별 상세 문서 |
+
+### 자주 사용하는 명령어
+
+```bash
+# 개발 환경 실행
+composer dev                    # 전체 개발 서버 (서버+큐+로그+Vite)
+php artisan serve               # Laravel 서버만
+php artisan queue:listen        # Queue 워커
+php artisan pail                # 실시간 로그
+
+# 테스트
+composer test                   # 전체 테스트
+php artisan test --filter=...  # 특정 테스트
+
+# 코드 품질
+./vendor/bin/pint               # 코드 스타일 수정
+
+# 캐시 클리어
+php artisan optimize:clear      # 전체 캐시 클리어
+php artisan cache:clear         # 애플리케이션 캐시
+php artisan config:clear        # Config 캐시
+php artisan route:clear         # Route 캐시
+
+# 데이터베이스
+php artisan migrate             # 마이그레이션 실행
+php artisan migrate:fresh       # 전체 재생성
+php artisan db:seed             # 시드 데이터
+
+# 디버깅
+php artisan tinker              # REPL 콘솔
+```
+
+### 환경 변수 (.env)
+
+필수 환경 변수:
+
+```bash
+# Database
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=toy_core
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+
+# Redis
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+
+# MongoDB
+MONGODB_HOST=127.0.0.1
+MONGODB_PORT=27017
+MONGODB_DATABASE=toy_core
+
+# MinIO
+MINIO_ENDPOINT=http://localhost:9000
+MINIO_ACCESS_KEY_ID=your-key
+MINIO_SECRET_ACCESS_KEY=your-secret
+MINIO_PUBLIC_BUCKET=public
+MINIO_PRIVATE_BUCKET=private
+
+# JWT
+JWT_SECRET=your-jwt-secret
+
+# Swagger
+SWAGGER_UI_ENABLED=true
+```
+
+### API 엔드포인트 구조
+
+| 경로 패턴 | 레이어 | 인증 | 설명 |
+|----------|--------|------|------|
+| `/api/*` | BFF | JWT 필요 | 외부 프론트엔드용 API |
+| `/internal/*` | Core Service | X-User-Id 헤더 | 내부 서비스 전용 (외부 노출 금지) |
+| `/health` | Core Service | 없음 | Health Check |
+
+### 도메인 구조 패턴
+
+**DDD 구조 도메인 (Auth, Health, Post, UserActivity):**
+```
+app/Domain/{DomainName}/
+├── Controllers/       # HTTP 컨트롤러
+├── Services/          # 비즈니스 로직
+├── Repositories/      # 데이터 접근 레이어
+├── DTOs/              # 데이터 전송 객체
+├── Events/            # 도메인 이벤트
+├── Exceptions/        # 도메인 예외
+└── Contracts/         # 인터페이스
+```
+
+**전통적 Laravel 구조 (Timer, File, Notification):**
+```
+app/
+├── Http/Controllers/{DomainName}Controller.php
+├── Services/{DomainName}Service.php
+└── Models/{DomainName}.php
+```
+
+### 공통 패턴 예제
+
+**컨트롤러 응답:**
+```php
+use App\Shared\Http\Traits\ApiResponsable;
+
+class ExampleController extends Controller
+{
+    use ApiResponsable;
+
+    public function index()
+    {
+        return $this->successResponse($data);
+    }
+
+    public function store()
+    {
+        return $this->createdResponse($data);
+    }
+
+    public function destroy()
+    {
+        return $this->deletedResponse();
+    }
+}
+```
+
+**예외 throw:**
+```php
+use App\Shared\Exceptions\NotFoundException;
+use App\Shared\Exceptions\ConflictException;
+
+// 리소스 없음
+throw NotFoundException::forResource('User', $id);
+
+// 중복 충돌
+throw ConflictException::duplicateField('email', $email);
+```
+
+**페이지네이션:**
+```php
+// Offset 페이지네이션
+$users = User::paginate(15);
+return $this->paginatedResponse($users);
+
+// Cursor 페이지네이션
+$users = User::cursorPaginate(15);
+return $this->paginatedResponse($users);
+```
+
+### 연락처 및 참고 자료
+
+- **프로젝트**: Toy Core System
+- **저장소**: 로컬 개발 환경
+- **문서**: `docs/` 디렉토리
+- **Swagger UI**: http://localhost:8000/swagger (개발 환경)
+
+---
+
+**마지막 업데이트**: 2025-12-18
+**버전**: Laravel 12.x, PHP 8.4+
