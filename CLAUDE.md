@@ -20,6 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Cache | Redis 8 |
 | NoSQL | MongoDB 8 |
 | Object Storage | MinIO |
+| Admin Panel | Filament 4.x |
 | Frontend | Tailwind CSS 4.x (Vite) |
 | Testing | PHPUnit 11.x |
 | Monitoring | Sentry |
@@ -41,6 +42,31 @@ SWAGGER_UI_ENABLED=true
 - `resources/swagger/openapi.json` - OpenAPI 스펙 파일
 - `config/swagger-ui.php` - Swagger UI 설정
 
+## Admin Panel (Filament)
+
+시스템 관리자를 위한 Filament 기반 관리자 패널이 제공됩니다.
+
+```bash
+# Admin Panel 접속 (로컬)
+http://localhost:8000/admin
+
+# 관리자 사용자 생성
+php artisan make:filament-user
+```
+
+**주요 기능:**
+- 사용자 관리 (User Management)
+- 게시물 관리 (Post CRUD)
+- 파일 관리 (File Upload/Download)
+- 타이머 관리 (Timer Management)
+- 활동 로그 모니터링 (Activity Logs)
+- 대시보드 & 통계 위젯
+
+**관련 문서:**
+- `docs/FILAMENT_SETUP.md` - Filament 설치 및 설정 가이드
+- `docs/references/FILAMENT.md` - Filament 참고 문서
+- `app/Providers/Filament/AdminPanelProvider.php` - Panel 설정
+
 ## Commands
 
 ### Development
@@ -51,7 +77,13 @@ composer dev
 
 # 프로젝트 초기 설정
 composer setup
+
+# Filament Admin Panel 에셋 생성 (처음 설치 시 또는 Filament 업데이트 후 필수)
+php artisan filament:assets
 ```
+
+> **⚠️ 중요**: Filament 에셋 파일은 버전 관리에서 제외되어 있습니다.
+> 프로젝트를 처음 클론한 후, 또는 Filament 패키지 업데이트 후에는 반드시 `php artisan filament:assets` 명령을 실행하세요.
 
 ### Testing
 
